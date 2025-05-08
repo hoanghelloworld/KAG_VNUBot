@@ -3,7 +3,7 @@ import streamlit.web.cli as stcli
 import os
 import sys
 
-# TODO: (Người 4) File này dùng để chạy ứng dụng Streamlit.
+# TODO: File này dùng để chạy ứng dụng Streamlit.
 #       Có thể không cần nếu logic chạy đã nằm trong app_ui.py và bạn chạy bằng `streamlit run app_ui.py`.
 #       Nếu có các bước khởi tạo phức tạp hơn trước khi chạy UI, có thể đặt ở đây.
 
@@ -28,7 +28,7 @@ def run_streamlit_app():
 
 if __name__ == "__main__":
     print("Starting KAG Reasoning Chatbot Application...")
-    # TODO: (Người 4) Thêm các bước kiểm tra hoặc khởi tạo cần thiết trước khi chạy UI.
+    # TODO: Thêm các bước kiểm tra hoặc khởi tạo cần thiết trước khi chạy UI.
     # Ví dụ: kiểm tra sự tồn tại của các model, artifacts (mặc dù app_ui cũng đã làm)
     
     # Kiểm tra cấu hình

@@ -10,7 +10,7 @@ import llm_utils # Sử dụng hàm get_llm_response, get_embeddings
 
 class AdvancedKAGBuilder:
     def __init__(self, chunk_size=config.CHUNK_SIZE, chunk_overlap=config.CHUNK_OVERLAP):
-        # TODO: (Người 2) Có thể cần tùy chỉnh text_splitter nếu cần
+        # TODO: Có thể cần tùy chỉnh text_splitter nếu cần
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
@@ -25,7 +25,7 @@ class AdvancedKAGBuilder:
         """
         Trích xuất thực thể nâng cao bằng LLM.
         """
-        # TODO: (Người 2) Thiết kế prompt NER chi tiết.
+        # TODO: Thiết kế prompt NER chi tiết.
         #       Yêu cầu LLM trả về JSON list: [{"text": "...", "type": "...", "start_char": ..., "end_char": ...}]
         #       Xử lý output JSON từ LLM, bao gồm cả trường hợp lỗi parsing.
         prompt = f"""
@@ -52,7 +52,7 @@ class AdvancedKAGBuilder:
             if not isinstance(entities, list): # Đảm bảo là list
                  print(f"Warning: LLM entity extraction did not return a list for chunk from {source_id_for_prompt}. Got: {response_str}")
                  return []
-            # TODO: (Người 2) Validate thêm cấu trúc của từng object entity
+            # TODO: Validate thêm cấu trúc của từng object entity
             return entities
         except json.JSONDecodeError:
             print(f"Error decoding JSON from LLM (entities) for chunk from {source_id_for_prompt}: {response_str}")
@@ -65,7 +65,7 @@ class AdvancedKAGBuilder:
         if not extracted_entities:
             return []
             
-        # TODO: (Người 2) Thiết kế prompt RE chi tiết.
+        # TODO:  Thiết kế prompt RE chi tiết.
         #       Yêu cầu LLM trả về JSON list các triple: [subject_text, relation_type, object_text]
         #       Sử dụng extracted_entities (có type) để giúp LLM.
         #       Định nghĩa một tập các relation_type mong muốn hoặc để LLM tự do hơn.
@@ -103,7 +103,7 @@ class AdvancedKAGBuilder:
             if not isinstance(relations, list):
                  print(f"Warning: LLM relation extraction did not return a list for chunk from {source_id_for_prompt}. Got: {response_str}")
                  return []
-            # TODO: (Người 2) Validate thêm cấu trúc của từng triple
+            # TODO:  Validate thêm cấu trúc của từng triple
             return relations
         except json.JSONDecodeError:
             print(f"Error decoding JSON from LLM (relations) for chunk from {source_id_for_prompt}: {response_str}")
@@ -151,7 +151,7 @@ class AdvancedKAGBuilder:
                 for ent_data in extracted_entities:
                     ent_text = ent_data.get("text")
                     ent_type = ent_data.get("type", "UNKNOWN_ENTITY_TYPE")
-                    # TODO: (Người 2) Implement logic chuẩn hóa tên thực thể (quan trọng!)
+                    # TODO:  Implement logic chuẩn hóa tên thực thể (quan trọng!)
                     # Ví dụ: viết thường, loại bỏ dấu câu không cần thiết, sử dụng stemming/lemmatization
                     normalized_ent_id = ent_text.lower().strip() # Chuẩn hóa đơn giản
 
@@ -182,7 +182,7 @@ class AdvancedKAGBuilder:
                 # print(f"Extracting relations from: {current_chunk_id}")
                 extracted_relations = self._extract_relations(chunk_text, extracted_entities, source_id_for_prompt=current_chunk_id)
                 for subj_text, rel_type, obj_text in extracted_relations:
-                    # TODO: (Người 2) Map subj_text và obj_text về normalized_ent_id đã tạo ở trên
+                    # TODO:  Map subj_text và obj_text về normalized_ent_id đã tạo ở trên
                     #       Điều này quan trọng để kết nối đúng các node trong KG.
                     #       Cần một cơ chế mapping hoặc tìm lại normalized_id từ text gốc.
                     subj_node_id = entity_nodes_in_chunk.get(subj_text) # Hoặc tìm lại qua chuẩn hóa
@@ -244,7 +244,7 @@ class AdvancedKAGBuilder:
         print("KAG BUILDER: All artifacts (FAISS, KG, DocStore) saved.")
 
 if __name__ == "__main__":
-    # TODO: (Người 2) Chạy file này sau khi Người 1 đã tạo ra "all_processed_texts.json".
+    # TODO:  Chạy file này sau khi Người 1 đã tạo ra "all_processed_texts.json".
     #       Cần có file llm_utils.py và config.py hoạt động.
     
     processed_data_path = os.path.join(config.PROCESSED_DATA_DIR, "all_processed_texts.json")

@@ -13,7 +13,7 @@ import config # Để kiểm tra sự tồn tại của artifacts
 from dynamic_reasoning_solver import DynamicKAGSolver # Import solver
 # import llm_utils # Có thể cần để khởi tạo model nếu solver không tự làm
 
-# TODO: (Người 4) Thiết kế giao diện người dùng thân thiện.
+# TODO:  Thiết kế giao diện người dùng thân thiện.
 #       - Hiển thị quá trình suy luận (scratchpad) một cách rõ ràng (ví dụ: trong expander).
 #       - Xử lý trạng thái loading khi solver đang chạy.
 #       - Cho phép người dùng cấu hình một số tham số cơ bản (ví dụ: top_k, max_steps) nếu muốn.
@@ -75,7 +75,7 @@ else:
             message_placeholder = st.empty()
             full_response_text = ""
             
-            # TODO: (Người 4) Hiển thị "Thinking..." hoặc spinner trong khi solver chạy.
+            # TODO:  Hiển thị "Thinking..." hoặc spinner trong khi solver chạy.
             #       Cách tốt hơn là chạy solver trong một thread riêng để UI không bị block.
             #       Streamlit có cách để stream output từ generator.
             
@@ -112,7 +112,7 @@ else:
         
         st.session_state.messages.append(assistant_message)
 
-# TODO: (Người 4) Thêm các tính năng UI khác:
+# TODO:  Thêm các tính năng UI khác:
 #       - Nút "Clear Chat".
 #       - Hiển thị thông tin về KG (ví dụ: số lượng node, cạnh) - có thể ở sidebar.
 #       - Cho phép upload tài liệu mới để build KG (nếu có chức năng đó).

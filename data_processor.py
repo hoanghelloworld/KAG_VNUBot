@@ -5,7 +5,7 @@ import re
 from bs4 import BeautifulSoup # Có thể cần lại nếu dữ liệu crawl vẫn còn HTML
 import config
 
-# TODO: (Người 1) Hoàn thiện các hàm làm sạch và chuẩn hóa dữ liệu.
+# TODO: Hoàn thiện các hàm làm sạch và chuẩn hóa dữ liệu.
 #       - Loại bỏ HTML tags còn sót lại (nếu crawler chưa làm sạch hoàn toàn).
 #       - Xử lý các ký tự đặc biệt, encoding.
 #       - Loại bỏ các đoạn văn bản nhiễu (ví dụ: menu, footer, quảng cáo) dựa trên cấu trúc hoặc từ khóa.
@@ -16,7 +16,7 @@ def clean_html_content(html_text):
     if not html_text:
         return ""
     soup = BeautifulSoup(html_text, "html.parser")
-    # TODO: (Người 1) Tùy chỉnh logic loại bỏ thẻ không mong muốn
+    # TODO: Tùy chỉnh logic loại bỏ thẻ không mong muốn
     # Ví dụ: loại bỏ script, style, navigation, footer
     for element_type in ["script", "style", "nav", "footer", "header", "aside"]:
         for element in soup.find_all(element_type):
@@ -30,7 +30,7 @@ def normalize_text(text):
     if not text:
         return ""
     text = re.sub(r'\s+', ' ', text).strip() # Thay thế nhiều khoảng trắng bằng một
-    # TODO: (Người 1) Thêm các bước chuẩn hóa khác nếu cần (ví dụ: lowercase, xử lý unicode)
+    # TODO: Thêm các bước chuẩn hóa khác nếu cần (ví dụ: lowercase, xử lý unicode)
     return text
 
 def process_crawled_file(filepath):
@@ -87,7 +87,7 @@ def process_all_crawled_data():
     return processed_data_list
 
 if __name__ == "__main__":
-    # TODO: (Người 1) Đảm bảo rằng đã có dữ liệu trong config.CRAWLED_DATA_DIR từ bước crawler.
+    # TODO: Đảm bảo rằng đã có dữ liệu trong config.CRAWLED_DATA_DIR từ bước crawler.
     #       Chạy hàm này sau khi crawler đã hoàn thành.
     
     # Tạo file dummy để test processor nếu chưa có crawler output

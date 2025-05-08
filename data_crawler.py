@@ -6,7 +6,7 @@ import os
 import time
 import config # Import cấu hình chung
 
-# TODO: (Người 1) Hoàn thiện chức năng crawl dữ liệu từ một trang web cụ thể.
+# TODO: Hoàn thiện chức năng crawl dữ liệu từ một trang web cụ thể.
 #       - Xác định cấu trúc trang web mục tiêu.
 #       - Implement logic để trích xuất nội dung chính và metadata.
 #       - Xử lý các trường hợp lỗi (ví dụ: trang không tồn tại, timeout).
@@ -29,7 +29,7 @@ def parse_course_page(html_content, url):
     """
     soup = BeautifulSoup(html_content, 'html.parser')
     
-    # TODO: (Người 1) Điều chỉnh các selector này cho phù hợp với trang web mục tiêu
+    # TODO: Điều chỉnh các selector này cho phù hợp với trang web mục tiêu
     title_tag = soup.find('h1') # Giả sử tiêu đề nằm trong thẻ <h1>
     title = title_tag.text.strip() if title_tag else "N/A"
     
@@ -79,7 +79,7 @@ def crawl_website(start_url, max_pages=5):
                     json.dump(page_data, f, ensure_ascii=False, indent=4)
                 print(f"Saved data from {current_url} to {filename}")
 
-            # TODO: (Người 1) Implement logic tìm link mới trên trang hiện tại và thêm vào urls_to_visit
+            # TODO: Implement logic tìm link mới trên trang hiện tại và thêm vào urls_to_visit
             # soup = BeautifulSoup(html, 'html.parser')
             # for link in soup.find_all('a', href=True):
             #     abs_url = requests.compat.urljoin(current_url, link['href'])
@@ -92,7 +92,7 @@ def crawl_website(start_url, max_pages=5):
     return crawled_data
 
 if __name__ == "__main__":
-    # TODO: (Người 1) Cấu hình URL bắt đầu và các tham số khác từ config.py
+    # TODO: Cấu hình URL bắt đầu và các tham số khác từ config.py
     # dummy_start_url = "https://www.example.com/courses" # Thay bằng URL thực tế
     # print(f"Make sure to set TARGET_WEBSITE_URL in config.py")
     # if hasattr(config, 'TARGET_WEBSITE_URL'):

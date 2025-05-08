@@ -28,7 +28,7 @@ class DynamicKAGSolver:
         self.top_k = top_k_retrieval
         self.max_reasoning_steps = max_reasoning_steps
 
-        # TODO: (Người 3) Tinh chỉnh prompt này dựa trên thử nghiệm.
+        # TODO: Tinh chỉnh prompt này dựa trên thử nghiệm.
         #       Có thể cần thêm ví dụ few-shot.
         #       Định nghĩa rõ ràng các công cụ và cách LLM nên sử dụng chúng.
         self.reason_act_prompt_template_str = """
@@ -262,7 +262,7 @@ class DynamicKAGSolver:
                 error_message = f"Action Error: {action_input}\n"
                 scratchpad += error_message
                 print(f"  SOLVER {error_message.strip()}")
-                # TODO: (Người 3) Có thể thêm logic để LLM thử lại với thông báo lỗi, hoặc dừng hẳn
+                # TODO: Có thể thêm logic để LLM thử lại với thông báo lỗi, hoặc dừng hẳn
                 # For now, just stop.
                 break 
             
@@ -276,7 +276,7 @@ class DynamicKAGSolver:
 
         # Nếu hết số bước mà chưa finish
         print("\n--- SOLVER: Max reasoning steps reached. Attempting to synthesize final answer. ---")
-        # TODO: (Người 3) Tinh chỉnh prompt tổng hợp này.
+        # TODO: Tinh chỉnh prompt tổng hợp này.
         final_synthesis_prompt = f"""
         Original Query: {original_query}
 
@@ -294,7 +294,7 @@ class DynamicKAGSolver:
         return final_answer
 
 if __name__ == "__main__":
-    # TODO: (Người 3) Chạy file này sau khi Người 2 đã tạo artifacts (FAISS, GML, DocStore).
+    # TODO:  Chạy file này sau khi Người 2 đã tạo artifacts (FAISS, GML, DocStore).
     #       Đảm bảo llm_utils.py và config.py đã sẵn sàng.
     
     # Kiểm tra sự tồn tại của artifacts

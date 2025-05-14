@@ -5,10 +5,9 @@ import os
 
 # --- Đường dẫn Cơ sở ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-ARTIFACTS_DIR = os.path.join(DATA_DIR, "artifacts")
-CRAWLED_DATA_DIR = os.path.join(DATA_DIR, "crawled_data")
-PROCESSED_DATA_DIR = os.path.join(DATA_DIR, "processed_data")
+ARTIFACTS_DIR = os.path.join(BASE_DIR, "artifacts")
+CRAWLED_DATA_DIR = os.path.join(BASE_DIR, "data_unpreprocessed")
+PROCESSED_DATA_DIR = os.path.join(BASE_DIR, "data_processed")
 
 # --- Cấu hình Model ---
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -36,7 +35,6 @@ MAX_REASONING_STEPS = 4
 #        MAX_PAGES_TO_CRAWL = 100
 
 # --- Đảm bảo các thư mục tồn tại ---
-os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(ARTIFACTS_DIR, exist_ok=True)
 os.makedirs(CRAWLED_DATA_DIR, exist_ok=True)
 os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)

@@ -293,6 +293,165 @@ class DynamicKAGSolver:
         final_answer = llm_utils.get_llm_response(final_synthesis_prompt, max_new_tokens=500, system_message="You are a summarization and final response generation expert.")
         return final_answer
 
+    def solve_with_sources(self, original_query):
+        """
+        Extended version of solve() that returns the answer along with the sources and reasoning process.
+        
+        Returns:
+            dict: {
+                "answer": final answer text,
+                "sources": list of source objects with title and content,
+                "reasoning": reasoning process text
+            }
+        """
+        # Use the ReasonAct agent approach but collect sources and reasoning
+        max_iterations = 7 # Limit iterations for safety
+        scratchpad = ""
+        used_chunks = set()  # Keep track of used chunks
+        sources = []
+        
+        # Initialize scratchpad history
+        for i in range(max_iterations):
+            # Format prompt
+            reason_act_prompt = self.reason_act_prompt_template_str.format(
+                original_query=original_query,
+                scratchpad=scratchpad
+            )
+            
+            # Generate next thought and action
+            llm_output = llm_utils.get_llm_response(
+                reason_act_prompt, 
+                max_new_tokens=400,
+                system_message="You are an expert reasoning agent for answering questions in Vietnamese.",
+                stop_sequences=self.stop_sequences_for_llm_action
+            )
+            
+            # Parse output
+            thought, action_type, action_input = self._parse_llm_action_output(llm_output)
+            
+            # Add to scratchpad
+            scratchpad += f"\nThought: {thought}\nAction: "
+            
+            # Handle actions
+            if action_type == "finish":
+                # Return final answer with sources and reasoning
+                scratchpad += f"finish(\"{action_input}\")\n"
+                scratchpad += f"Observation: I'll provide a final answer: {action_input}"
+                
+                # Format sources for return
+                formatted_sources = []
+                for chunk_id in used_chunks:
+                    if chunk_id in self.doc_store:
+                        source_doc_id = "Không xác định"
+                        if self.graph.has_node(chunk_id):
+                            source_doc_id = self.graph.nodes[chunk_id].get('source_document_id', 'Không xác định')
+                        
+                        formatted_sources.append({
+                            "title": f"Nguồn: {source_doc_id}",
+                            "content": self.doc_store[chunk_id][:500] + "..." if len(self.doc_store[chunk_id]) > 500 else self.doc_store[chunk_id]
+                        })
+                
+                return {
+                    "answer": action_input,
+                    "sources": formatted_sources,
+                    "reasoning": scratchpad
+                }
+                
+            elif action_type == "search_vector_db":
+                # Search vector DB and add results to scratchpad
+                scratchpad += f"search_vector_db(\"{action_input}\")\n"
+                
+                # Perform search
+                query_embedding = llm_utils.get_embeddings([action_input]).cpu().numpy()
+                distances, faiss_numeric_indices = self.faiss_index.search(query_embedding, self.top_k)
+                
+                # Process results for scratchpad
+                retrieved_info = []
+                for i in range(len(faiss_numeric_indices[0])):
+                    numeric_id = faiss_numeric_indices[0][i]
+                    if numeric_id != -1:
+                        chunk_id_str = self.faiss_id_to_chunk_id.get(numeric_id)
+                        if chunk_id_str and chunk_id_str in self.doc_store:
+                            # Add to used chunks for sources
+                            used_chunks.add(chunk_id_str)
+                            
+                            # Add content preview to observation
+                            chunk_text = self.doc_store[chunk_id_str]
+                            chunk_text_preview = chunk_text[:300] + "..." if len(chunk_text) > 300 else chunk_text
+                            retrieved_info.append(f"- Chunk ID: {chunk_id_str}\n  Content: {chunk_text_preview}")
+                
+                if not retrieved_info:
+                    observation = f"Observation: No relevant chunks found for query: \"{action_input}\"."
+                else:
+                    observation = f"Observation: Retrieved from vector DB for \"{action_input}\":\n" + "\n".join(retrieved_info)
+                
+                scratchpad += observation
+                
+            elif action_type == "query_kg":
+                # Query KG and add results to scratchpad
+                args_str = ", ".join([f'"{arg}"' for arg in action_input]) if isinstance(action_input, tuple) else str(action_input)
+                scratchpad += f"query_kg({args_str})\n"
+                
+                # Process subject, relation, object, query_type
+                if isinstance(action_input, tuple) and len(action_input) >= 4:
+                    subj, rel, obj, q_type = action_input[:4]
+                    kg_results = self._query_kg_advanced(subj, rel, obj, q_type)
+                    scratchpad += kg_results
+                else:
+                    scratchpad += "Observation: Invalid KG query parameters."
+            
+            else:  # Unrecognized action
+                scratchpad += f"<{action_type}>(\"{action_input}\")\n"
+                scratchpad += f"Observation: Unrecognized action type '{action_type}'. Please use one of the available tools."
+            
+            # Check if we've reached the iteration limit
+            if i == max_iterations - 1:
+                scratchpad += "\nObservation: Reached maximum iterations. Finishing with best answer so far."
+                
+                # Generate a summary answer using LLM
+                summary_prompt = f"""
+                Based on the following reasoning process, provide a concise final answer to the original query.
+                
+                Original query: {original_query}
+                
+                Reasoning process:
+                {scratchpad}
+                
+                Final answer:
+                """
+                
+                final_answer = llm_utils.get_llm_response(
+                    summary_prompt,
+                    max_new_tokens=400,
+                    system_message="You are a helpful assistant summarizing information in Vietnamese."
+                )
+                
+                # Format sources for return
+                formatted_sources = []
+                for chunk_id in used_chunks:
+                    if chunk_id in self.doc_store:
+                        source_doc_id = "Không xác định"
+                        if self.graph.has_node(chunk_id):
+                            source_doc_id = self.graph.nodes[chunk_id].get('source_document_id', 'Không xác định')
+                        
+                        formatted_sources.append({
+                            "title": f"Nguồn: {source_doc_id}",
+                            "content": self.doc_store[chunk_id][:500] + "..." if len(self.doc_store[chunk_id]) > 500 else self.doc_store[chunk_id]
+                        })
+                
+                return {
+                    "answer": final_answer,
+                    "sources": formatted_sources,
+                    "reasoning": scratchpad
+                }
+        
+        # Fallback (shouldn't reach here)
+        return {
+            "answer": "Xin lỗi, tôi không thể tìm thấy câu trả lời cho câu hỏi của bạn.",
+            "sources": [],
+            "reasoning": scratchpad
+        }
+
 if __name__ == "__main__":
     # TODO:  Chạy file này sau khi Người 2 đã tạo artifacts (FAISS, GML, DocStore).
     #       Đảm bảo llm_utils.py và config.py đã sẵn sàng.

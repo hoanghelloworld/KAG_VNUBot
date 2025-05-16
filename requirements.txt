@@ -1,0 +1,20 @@
+streamlit==1.28.1
+transformers==4.35.2
+torch>=2.0.0
+# Replace faiss-cpu with faiss-gpu if you have CUDA GPU
+# For Windows users: try the following commented line if faiss-cpu doesn't work
+# pip install faiss-cpu -f https://download.pytorch.org/whl/torch_stable.html
+faiss-cpu==1.7.4
+networkx==3.1
+sentence-transformers==2.2.2
+langchain==0.0.339
+langchain-text-splitters==0.0.1
+numpy>=1.22.0
+pandas>=1.3.0
+matplotlib>=3.5.0
+tqdm>=4.64.0
+protobuf>=3.20.0
+scikit-learn>=1.0.0
+pyyaml>=6.0.0
+requests>=2.25.0
+pillow>=9.0.0

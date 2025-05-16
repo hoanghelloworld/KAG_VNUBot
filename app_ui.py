@@ -2,6 +2,7 @@
 import streamlit as st
 import sys
 import os
+import time
 
 # Thêm project_root vào sys.path để import các module khác
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -25,8 +26,8 @@ def load_solver():
     required_files = [config.FAISS_INDEX_PATH, config.GRAPH_PATH, config.DOC_STORE_PATH]
     missing_files = [f for f in required_files if not os.path.exists(f)]
     if missing_files:
-        st.error(f"Application cannot start. Missing critical KAG artifact files: {', '.join(missing_files)}. "
-                 "Please ensure the KAG data pipeline (crawler, processor, builder) has been run successfully.")
+        st.error(f"Ứng dụng không thể khởi động. Thiếu các file KAG cần thiết: {', '.join(missing_files)}. "
+                 "Vui lòng chạy tiến trình xây dựng dữ liệu KAG (build_kag_vnu.py) trước.")
         return None
     try:
         # llm_utils.get_llm_model() # Pre-load models if not handled by solver's init
@@ -34,20 +35,75 @@ def load_solver():
         solver = DynamicKAGSolver()
         return solver
     except Exception as e:
-        st.error(f"Error initializing KAG Solver: {e}")
-        st.error("Please check if models are downloaded and artifacts are correctly built.")
+        st.error(f"Lỗi khởi tạo KAG Solver: {e}")
+        st.error("Vui lòng kiểm tra xem các model đã được tải xuống và artifacts đã được xây dựng chính xác chưa.")
         return None
 
-# --- Giao diện Streamlit ---
-st.set_page_config(page_title="KAG Reasoning Chatbot", layout="wide")
-st.title("📚 KAG Powered Reasoning Chatbot")
-st.markdown("Hỏi những câu hỏi phức tạp về nội dung đào tạo đã được xử lý!")
+# --- Cấu hình trang Streamlit ---
+st.set_page_config(
+    page_title="Hệ thống Hỏi Đáp VNU-KAG", 
+    page_icon="🎓",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Load solver
+# --- Styles ---
+st.markdown("""
+<style>
+    .chat-title {
+        text-align: center;
+        color: #1E3A8A;
+    }
+    .source-link {
+        font-size: 0.8em;
+        color: #4B5563;
+    }
+    .source-content {
+        background-color: #F3F4F6;
+        padding: 10px;
+        border-radius: 5px;
+        margin-top: 5px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# --- Header ---
+st.markdown("<h1 class='chat-title'>🎓 Hệ thống Hỏi Đáp Đại học Quốc gia Hà Nội</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Trả lời các câu hỏi về quy chế, quy định học tập tại ĐHQGHN</p>", unsafe_allow_html=True)
+
+# --- Sidebar ---
+with st.sidebar:
+    st.header("Thông tin hệ thống")
+    st.markdown("Hệ thống sử dụng **KAG** (Knowledge Augmented Generation) để trả lời các câu hỏi về quy chế, quy định học tập tại ĐHQGHN.")
+    
+    st.subheader("Nguồn dữ liệu")
+    st.markdown("""
+    - Quy chế đào tạo đại học
+    - Quy chế đào tạo thạc sĩ
+    - Quy chế đào tạo tiến sĩ
+    - Quy chế công tác sinh viên
+    - Quy định về học phí, khen thưởng
+    - Thông tin về trường ĐHCN và ĐHQGHN
+    """)
+    
+    st.subheader("Gợi ý câu hỏi")
+    st.markdown("""
+    - Khi nào sinh viên bị buộc thôi học?
+    - Thời gian đào tạo tiến sĩ là bao lâu?
+    - Điều kiện để được công nhận tốt nghiệp đại học?
+    - Sinh viên được đăng ký tối đa bao nhiêu tín chỉ một học kỳ?
+    """)
+    
+    # Nút Clear Chat
+    if st.button("🗑️ Xóa lịch sử chat"):
+        st.session_state.messages = []
+        st.experimental_rerun()
+
+# --- Load solver ---
 solver_instance = load_solver()
 
 if solver_instance is None:
-    st.warning("Solver could not be loaded. Please check the console for errors and ensure KAG artifacts are present.")
+    st.warning("Không thể tải KAG Solver. Vui lòng kiểm tra console để xem lỗi và đảm bảo các artifacts KAG đã được tạo.")
 else:
     # Initialize chat history
     if "messages" not in st.session_state:
@@ -56,14 +112,21 @@ else:
     # Display chat messages from history on app rerun
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-            if "scratchpad" in message and message["scratchpad"]:
-                with st.expander("Show Reasoning Process"):
-                    st.text_area("Scratchpad", value=message["scratchpad"], height=300, disabled=True)
-
+            if message["role"] == "assistant" and "sources" in message:
+                st.markdown(message["content"])
+                with st.expander("📚 Xem nguồn tham khảo"):
+                    for source in message["sources"]:
+                        st.markdown(f"**{source['title']}**")
+                        st.markdown(f"<div class='source-content'>{source['content']}</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(message["content"])
+            
+            if "reasoning" in message and message["reasoning"]:
+                with st.expander("🧠 Xem quá trình suy luận"):
+                    st.markdown(message["reasoning"])
 
     # React to user input
-    if prompt := st.chat_input("Câu hỏi của bạn là gì?"):
+    if prompt := st.chat_input("Nhập câu hỏi của bạn..."):
         # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
         # Display user message in chat message container
@@ -75,42 +138,50 @@ else:
             message_placeholder = st.empty()
             full_response_text = ""
             
-            # TODO:  Hiển thị "Thinking..." hoặc spinner trong khi solver chạy.
-            #       Cách tốt hơn là chạy solver trong một thread riêng để UI không bị block.
-            #       Streamlit có cách để stream output từ generator.
-            
-            # Hiện tại, chạy đồng bộ (UI sẽ bị block)
             try:
-                with st.spinner("Đang suy luận và tìm kiếm..."):
-                    # Để lấy scratchpad, chúng ta cần sửa đổi solver.solve()
-                    # hoặc thêm một cách để truy cập nó.
-                    # Hiện tại, chúng ta không có scratchpad trực tiếp từ solve()
-                    # Giả sử solver.solve() trả về (final_answer, scratchpad_history)
-                    # Cần sửa đổi dynamic_reasoning_solver.py để trả về scratchpad
+                with st.spinner("🔍 Đang tìm kiếm và suy luận..."):
+                    result = solver_instance.solve_with_sources(prompt)
                     
-                    # ---- GIẢ ĐỊNH CẦN SỬA SOLVER ----
-                    # final_answer, scratchpad_log = solver_instance.solve_with_log(prompt) 
-                    # ---- KẾT THÚC GIẢ ĐỊNH ----
-
-                    # Cách hiện tại (chỉ có final_answer)
-                    final_answer = solver_instance.solve(prompt)
-                    scratchpad_log = "Scratchpad logging not fully implemented in UI for this version. Full log in console."
-                    # Để có scratchpad ở đây, solver.solve cần trả về nó, hoặc có một callback
-                    # Hoặc chúng ta có thể capture stdout của solver (phức tạp hơn)
-
-                full_response_text = final_answer
+                    if isinstance(result, dict):
+                        # New format with sources and reasoning
+                        full_response_text = result.get("answer", "Không tìm thấy câu trả lời.")
+                        sources = result.get("sources", [])
+                        reasoning = result.get("reasoning", "")
+                    else:
+                        # Old format (just answer string)
+                        full_response_text = result
+                        sources = []
+                        reasoning = ""
+                
+                # Display main answer first
                 message_placeholder.markdown(full_response_text)
                 
-                # Thêm scratchpad vào message nếu có (cần sửa solver)
-                assistant_message = {"role": "assistant", "content": full_response_text, "scratchpad": scratchpad_log}
+                # If we have sources, show them in an expander
+                if sources:
+                    with st.expander("📚 Xem nguồn tham khảo"):
+                        for source in sources:
+                            st.markdown(f"**{source['title']}**")
+                            st.markdown(f"<div class='source-content'>{source['content']}</div>", unsafe_allow_html=True)
+                
+                # Store assistant message with all components
+                assistant_message = {
+                    "role": "assistant", 
+                    "content": full_response_text,
+                    "sources": sources if sources else [],
+                    "reasoning": reasoning if reasoning else ""
+                }
 
             except Exception as e:
-                st.error(f"An error occurred: {e}")
+                st.error(f"Đã xảy ra lỗi: {e}")
                 full_response_text = "Xin lỗi, đã có lỗi xảy ra trong quá trình xử lý."
                 message_placeholder.markdown(full_response_text)
-                assistant_message = {"role": "assistant", "content": full_response_text, "scratchpad": f"Error: {e}"}
+                assistant_message = {"role": "assistant", "content": full_response_text}
         
         st.session_state.messages.append(assistant_message)
+
+    # --- Footer ---
+    st.markdown("---")
+    st.markdown("<p style='text-align: center;'>© 2024 VNU-KAG | Sử dụng KAG Framework</p>", unsafe_allow_html=True)
 
 # TODO:  Thêm các tính năng UI khác:
 #       - Nút "Clear Chat".

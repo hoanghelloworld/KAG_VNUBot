@@ -104,16 +104,147 @@ def get_embeddings(texts):
     Tạo vector embedding cho danh sách các đoạn văn bản.
     """
     model = get_embedding_model()
-    # TODO: Xử lý batching nếu danh sách texts quá lớn để tránh OOM
-    # Ví dụ:
-    # batch_size = 32
-    # all_embeddings = []
-    # for i in range(0, len(texts), batch_size):
-    #     batch_texts = texts[i:i+batch_size]
-    #     batch_embeddings = model.encode(batch_texts, convert_to_tensor=True, device=config.DEVICE)
-    #     all_embeddings.append(batch_embeddings)
-    # return torch.cat(all_embeddings, dim=0)
-    return model.encode(texts, convert_to_tensor=True, device=config.DEVICE)
+    # Xử lý batching nếu danh sách texts quá lớn để tránh OOM
+    batch_size = 32
+    all_embeddings = []
+    for i in range(0, len(texts), batch_size):
+        batch_texts = texts[i:i+batch_size]
+        batch_embeddings = model.encode(batch_texts, convert_to_tensor=True, device=config.DEVICE)
+        all_embeddings.append(batch_embeddings)
+    
+    if len(all_embeddings) == 1:
+        return all_embeddings[0]
+    else:
+        return torch.cat(all_embeddings, dim=0)
 
-# TODO: Thêm các hàm tiện ích liên quan đến LLM khác nếu cần
-# Ví dụ: hàm tính toán xác suất token, hàm kiểm tra độ dài context, ...
+# Thêm các hàm tiện ích liên quan đến LLM khác nếu cần
+def calculate_token_probabilities(prompt_text, next_tokens=5):
+    """
+    Tính xác suất của các token tiếp theo dựa trên prompt đã cho.
+    
+    Args:
+        prompt_text: Đoạn văn bản đầu vào
+        next_tokens: Số lượng token có xác suất cao nhất muốn lấy
+        
+    Returns:
+        Danh sách các tuple (token, xác suất)
+    """
+    tokenizer = get_llm_tokenizer()
+    model = get_llm_model()
+    
+    inputs = tokenizer(prompt_text, return_tensors="pt").to(config.DEVICE)
+    with torch.no_grad():
+        outputs = model(**inputs)
+        
+    # Lấy logits cho token cuối cùng
+    logits = outputs.logits[0, -1, :]
+    probabilities = torch.nn.functional.softmax(logits, dim=0)
+    
+    # Lấy top-k tokens có xác suất cao nhất
+    topk_probs, topk_indices = torch.topk(probabilities, next_tokens)
+    
+    results = []
+    for i, (prob, idx) in enumerate(zip(topk_probs, topk_indices)):
+        token = tokenizer.decode([idx])
+        results.append((token, prob.item()))
+        
+    return results
+
+def check_context_length(text, model_name=None):
+    """
+    Kiểm tra độ dài context của văn bản so với giới hạn của model.
+    
+    Args:
+        text: Văn bản cần kiểm tra
+        model_name: Tên model để xác định giới hạn (nếu None, sẽ dùng model mặc định)
+        
+    Returns:
+        tuple: (số tokens, giới hạn của model, có vượt quá không)
+    """
+    if model_name is None:
+        model_name = config.LLM_MODEL_NAME
+        
+    tokenizer = get_llm_tokenizer()
+    tokens = tokenizer.encode(text)
+    token_count = len(tokens)
+    
+    # Xác định giới hạn của model
+    model_limits = {
+        "gpt-3.5-turbo": 4096,
+        "gpt-4": 8192,
+        "phi-2": 2048,
+        "llama2-7b": 4096,
+        "llama2-13b": 4096,
+        "llama3-8b": 8192,
+        "mistral-7b": 8192,
+        "mistral-8x7b": 32768,
+    }
+    
+    limit = model_limits.get(model_name.lower(), 2048)  # Mặc định là 2048 nếu không biết model
+    
+    return token_count, limit, token_count > limit
+
+def truncate_to_max_tokens(text, max_tokens=None, truncation_method="end"):
+    """
+    Cắt bớt văn bản để đảm bảo không vượt quá số token tối đa.
+    
+    Args:
+        text: Văn bản cần cắt
+        max_tokens: Số token tối đa (mặc định lấy theo giới hạn của model)
+        truncation_method: Phương pháp cắt ("start", "end", hoặc "middle")
+        
+    Returns:
+        Văn bản đã được cắt bớt
+    """
+    tokenizer = get_llm_tokenizer()
+    tokens = tokenizer.encode(text)
+    
+    if max_tokens is None:
+        _, max_tokens, _ = check_context_length(text)
+    
+    if len(tokens) <= max_tokens:
+        return text
+    
+    if truncation_method == "end":
+        # Giữ phần đầu, cắt phần cuối
+        truncated_tokens = tokens[:max_tokens]
+    elif truncation_method == "start":
+        # Giữ phần cuối, cắt phần đầu
+        truncated_tokens = tokens[-max_tokens:]
+    elif truncation_method == "middle":
+        # Giữ đầu và cuối, cắt phần giữa
+        half = max_tokens // 2
+        truncated_tokens = tokens[:half] + tokens[-half:]
+    else:
+        raise ValueError(f"Phương pháp cắt không hợp lệ: {truncation_method}")
+    
+    return tokenizer.decode(truncated_tokens)
+
+def chunk_text(text, max_chunk_size=1024, overlap=100):
+    """
+    Chia văn bản thành các đoạn nhỏ hơn với độ chồng lấn.
+    
+    Args:
+        text: Văn bản cần chia
+        max_chunk_size: Kích thước tối đa của mỗi đoạn (tính bằng token)
+        overlap: Số token chồng lấn giữa các đoạn
+        
+    Returns:
+        Danh sách các đoạn văn bản
+    """
+    tokenizer = get_llm_tokenizer()
+    tokens = tokenizer.encode(text)
+    
+    if len(tokens) <= max_chunk_size:
+        return [text]
+    
+    chunks = []
+    for i in range(0, len(tokens), max_chunk_size - overlap):
+        chunk_tokens = tokens[i:i + max_chunk_size]
+        chunk_text = tokenizer.decode(chunk_tokens)
+        chunks.append(chunk_text)
+        
+        if i + max_chunk_size >= len(tokens):
+            break
+    
+    return chunks

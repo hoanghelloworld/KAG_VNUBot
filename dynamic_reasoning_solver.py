@@ -28,19 +28,34 @@ class DynamicKAGSolver:
         self.top_k = top_k_retrieval
         self.max_reasoning_steps = max_reasoning_steps
 
-        # TODO: Tinh chỉnh prompt này dựa trên thử nghiệm.
-        #       Có thể cần thêm ví dụ few-shot.
-        #       Định nghĩa rõ ràng các công cụ và cách LLM nên sử dụng chúng.
+        # Tinh chỉnh prompt dựa trên thử nghiệm
         self.reason_act_prompt_template_str = """
-        You are a reasoning agent trying to answer the Original Query.
+        You are a reasoning agent specialized in answering questions about university regulations, policies, and educational procedures at VNU (Vietnam National University). Analyze the Original Query carefully to understand what information is required.
+
         You have access to the following tools:
-        1. `search_vector_db(search_query: str)`: Searches the vector database for relevant text chunks based on the `search_query`. Use this to find general information, definitions, or context.
-        2. `query_kg(subject: str, relation: str, object: str, query_type: str)`: Queries the knowledge graph.
-           - To find relations between two known entities: `query_kg("EntityA", "?", "EntityB", query_type="find_relation")`
-           - To find entities related to one entity via a relation: `query_kg("EntityA", "relation_label", "?", query_type="find_object")` or `query_kg("?", "relation_label", "EntityB", query_type="find_subject")`
-           - To get attributes of an entity (if KG stores them): `query_kg("EntityA", "?", "?", query_type="get_attributes")` (less common for simple graph)
-           - To find chunks mentioning an entity: `query_kg("EntityA", "mentioned_in_chunk", "?", query_type="find_mentioning_chunks")`
-        3. `finish(final_answer: str)`: If you have gathered enough information and can confidently answer the Original Query, use this tool to provide the final answer.
+        1. `search_vector_db(search_query: str)`: Searches the vector database for relevant text chunks based on the `search_query`. Use this to find regulations, definitions, or contextual information. Make your search queries specific and in Vietnamese when appropriate.
+           Examples:
+           - `search_vector_db("quy định về học phí đại học quốc gia Hà Nội")`
+           - `search_vector_db("cấu trúc chương trình đào tạo")` 
+           - `search_vector_db("điều kiện mở ngành đào tạo mới")`
+
+        2. `query_kg(subject: str, relation: str, object: str, query_type: str)`: Queries the knowledge graph to find relationships between concepts.
+           Examples:
+           - To find relationships between entities: 
+             `query_kg("Học phí", "?", "Chương trình đào tạo", query_type="find_relation")`
+           - To find entities related to a concept via a specific relation: 
+             `query_kg("Chuẩn đầu ra", "belongs_to", "?", query_type="find_object")` 
+             `query_kg("?", "manages", "Khóa luận tốt nghiệp", query_type="find_subject")`
+           - To get attributes and relationships of an entity: 
+             `query_kg("Đại học Quốc gia Hà Nội", "?", "?", query_type="get_attributes")`
+           - To find documents mentioning an entity: 
+             `query_kg("Chương trình đào tạo", "mentioned_in_chunk", "?", query_type="find_mentioning_chunks")`
+           - To find entities by type:
+             `query_kg("document", "entity_type", "?", query_type="find_entity_by_type")`
+           - To list entities in the knowledge graph:
+             `query_kg("?", "?", "?", query_type="list_entities")`
+
+        3. `finish(final_answer: str)`: When you have gathered sufficient information to answer the Original Query comprehensively, use this to provide your final answer. Make sure your answer is well-structured, accurate, and cites specific regulations or documents.
 
         Original Query: {original_query}
 
@@ -50,12 +65,19 @@ class DynamicKAGSolver:
         ---
 
         Based on the Original Query and your Scratchpad, formulate your next Thought and the Action to take.
-        Your Thought should briefly explain your reasoning for choosing the next action.
+        Your Thought should analyze what information you have gathered so far, what is still missing, and what your next step should be.
         Your Action MUST be one of the tools described above, with the correct arguments.
+
+        Follow this step-by-step reasoning process:
+        1. Understand what information you need to answer the query
+        2. Gather relevant information using search_vector_db and query_kg
+        3. Analyze the information to identify gaps or contradictions
+        4. Continue collecting information until you have enough to answer completely
+        5. Provide a comprehensive answer with finish() when ready
 
         Format your response STRICTLY as:
         Thought: [Your thought process]
-        Action: [Call one of the tools, e.g., `search_vector_db("meaning of AI")` or `finish("The answer is...")`]
+        Action: [Call one of the tools, e.g., `search_vector_db("quy định học phí")` or `finish("Theo quy định...")`]
         """
         self.stop_sequences_for_llm_action = ["Action:"] # Để LLM dừng sau khi tạo Thought
 
@@ -71,7 +93,7 @@ class DynamicKAGSolver:
         retrieved_chunk_infos = []
         for i in range(len(faiss_numeric_indices[0])):
             numeric_id = faiss_numeric_indices[0][i]
-            if numeric_id != -1: # FAISS trả về -1 nếu không đủ k kết quả
+            if (numeric_id != -1): # FAISS trả về -1 nếu không đủ k kết quả
                 chunk_id_str = self.faiss_id_to_chunk_id.get(numeric_id)
                 if chunk_id_str and chunk_id_str in self.doc_store:
                     # Rút gọn context hiển thị để tránh làm LLM bị quá tải
@@ -118,21 +140,91 @@ class DynamicKAGSolver:
                             relation_label = edge_data.get('relation_label', 'related_to')
                             if rel == "?" or rel == relation_label.lower():
                                 results.append(f"Found KG Relation: ('{subj}', '{relation_label}', '{obj}') from chunk '{edge_data.get('source_chunk_id','N/A')}'")
-                # TODO: (Người 3) Có thể tìm đường đi nếu không có cạnh trực tiếp
+                
+                # Tìm đường đi nếu không có cạnh trực tiếp
+                if not results:
+                    try:
+                        # Tìm đường đi ngắn nhất giữa hai node
+                        path = nx.shortest_path(self.graph, source=subj, target=obj)
+                        if len(path) > 2:  # Đường đi có ít nhất một node trung gian
+                            path_str = " -> ".join(path)
+                            results.append(f"Indirect path found between '{subj}' and '{obj}': {path_str}")
+                            # Thêm chi tiết về các cạnh trong đường đi
+                            for i in range(len(path)-1):
+                                source, target = path[i], path[i+1]
+                                for edge_key, edge_data in self.graph.get_edge_data(source, target).items():
+                                    edge_type = edge_data.get('type', 'unknown')
+                                    relation = edge_data.get('relation_label', 'related_to') if edge_type == 'kg_relation' else edge_type
+                                    results.append(f"  - Step {i+1}: ('{source}', '{relation}', '{target}')")
+                    except nx.NetworkXNoPath:
+                        results.append(f"No path found between '{subj}' and '{obj}' in the knowledge graph.")
         
-        # TODO: (Người 3) Implement thêm các query_type khác:
-        # elif q_type == "find_object": ...
-        # elif q_type == "find_subject": ...
-        # elif q_type == "get_attributes": (nếu KAGBuilder lưu thuộc tính vào node) ...
-        #     if subj != "?" and self.graph.has_node(subj):
-        #         node_attrs = self.graph.nodes[subj]
-        #         # Lọc ra các thuộc tính người dùng định nghĩa, không phải của networkx
-        #         custom_attrs = {k:v for k,v in node_attrs.items() if k not in ['type', 'text_preview', 'original_text_forms']}
-        #         if custom_attrs:
-        #             results.append(f"Attributes for '{subj}': {custom_attrs}")
-        #         else:
-        #             results.append(f"No specific attributes found for '{subj}' in KG.")
-
+        elif q_type == "find_object":
+            # Ví dụ: query_kg("John McCarthy", "created", "?", query_type="find_object")
+            # Tìm các đối tượng có quan hệ với chủ thể
+            if subj != "?" and rel != "?" and self.graph.has_node(subj):
+                for neighbor_id, edge_dict in self.graph.adj[subj].items():
+                    for edge_key, edge_data in edge_dict.items():
+                        if (edge_data.get('type') == 'kg_relation' and 
+                            edge_data.get('relation_label', '').lower() == rel):
+                            results.append(f"Found object: '{neighbor_id}' related to '{subj}' via '{rel}' from chunk '{edge_data.get('source_chunk_id','N/A')}'")
+        
+        elif q_type == "find_subject":
+            # Ví dụ: query_kg("?", "created", "Lisp", query_type="find_subject")
+            # Tìm các chủ thể có quan hệ với đối tượng
+            if obj != "?" and rel != "?" and self.graph.has_node(obj):
+                for pred_id in self.graph.predecessors(obj):
+                    edge_dict = self.graph.get_edge_data(pred_id, obj)
+                    for edge_key, edge_data in edge_dict.items():
+                        if (edge_data.get('type') == 'kg_relation' and 
+                            edge_data.get('relation_label', '').lower() == rel):
+                            results.append(f"Found subject: '{pred_id}' related to '{obj}' via '{rel}' from chunk '{edge_data.get('source_chunk_id','N/A')}'")
+        
+        elif q_type == "get_attributes":
+            # Ví dụ: query_kg("John McCarthy", "?", "?", query_type="get_attributes")
+            # Lấy thuộc tính của một thực thể
+            if subj != "?" and self.graph.has_node(subj):
+                node_attrs = self.graph.nodes[subj]
+                # Lọc ra các thuộc tính người dùng định nghĩa, không phải của networkx
+                custom_attrs = {k:v for k,v in node_attrs.items() if k not in ['type', 'text_preview', 'original_text_forms']}
+                if custom_attrs:
+                    results.append(f"Attributes for '{subj}': {custom_attrs}")
+                
+                # Lấy tất cả các relation của entity này để hiển thị như attributes
+                for neighbor_id, edge_dict in self.graph.adj[subj].items():
+                    for edge_key, edge_data in edge_dict.items():
+                        if edge_data.get('type') == 'kg_relation':
+                            relation = edge_data.get('relation_label', 'related_to')
+                            results.append(f"Relation: '{subj}' --[{relation}]--> '{neighbor_id}'")
+                
+                if not results:
+                    results.append(f"No specific attributes or relations found for '{subj}' in KG.")
+                    
+        elif q_type == "find_entity_by_type":
+            # Ví dụ: query_kg("person", "entity_type", "?", query_type="find_entity_by_type")
+            # Tìm các thực thể thuộc loại cụ thể
+            entity_type = subj.lower()
+            for node_id, node_attrs in self.graph.nodes(data=True):
+                if (node_attrs.get('type') == 'entity' and 
+                    node_attrs.get('entity_type', '').lower() == entity_type):
+                    results.append(f"Found {entity_type}: '{node_id}'")
+        
+        elif q_type == "list_entities":
+            # Liệt kê tất cả các thực thể trong KG
+            entity_count = 0
+            sample_entities = []
+            for node_id, node_attrs in self.graph.nodes(data=True):
+                if node_attrs.get('type') == 'entity':
+                    entity_count += 1
+                    if len(sample_entities) < 10:  # Lấy mẫu 10 entity đầu tiên
+                        entity_type = node_attrs.get('entity_type', 'unknown')
+                        sample_entities.append(f"'{node_id}' (type: {entity_type})")
+            
+            results.append(f"Found {entity_count} entities in the knowledge graph.")
+            if sample_entities:
+                results.append(f"Sample entities: {', '.join(sample_entities)}")
+                if entity_count > 10:
+                    results.append("Use more specific queries to explore other entities.")
 
         if not results:
             return f"Observation: No results found in KG for query_kg(\"{subject_str}\", \"{relation_str}\", \"{object_str}\", query_type=\"{q_type}\")."
@@ -142,8 +234,7 @@ class DynamicKAGSolver:
     def _parse_llm_action_output(self, llm_output_str):
         """
         Phân tích output của LLM để lấy Thought và Action.
-        TODO: (Người 3) Làm cho việc parsing này mạnh mẽ hơn, xử lý lỗi tốt hơn.
-              Có thể yêu cầu LLM output JSON để dễ parse.
+        Xử lý nhiều định dạng output khác nhau và xử lý các trường hợp lỗi.
         """
         thought = ""
         action_type = "error" # Mặc định là lỗi nếu không parse được
@@ -167,47 +258,148 @@ class DynamicKAGSolver:
         action_call_str = action_full_str_match.group(1).strip()
 
         # Phân tích các loại action
-        finish_match = re.match(r"finish\((.*?)\)", action_call_str, re.IGNORECASE)
-        search_db_match = re.match(r"search_vector_db\((.*?)\)", action_call_str, re.IGNORECASE)
-        query_kg_match = re.match(r"query_kg\((.*?)\)", action_call_str, re.IGNORECASE)
-
+        # Hỗ trợ nhiều định dạng khác nhau mà LLM có thể tạo ra
+        
+        # 1. Xử lý finish() action
+        finish_match = re.search(r'finish\s*\((.+?)(?:\)|$)', action_call_str, re.DOTALL)
         if finish_match:
             action_type = "finish"
-            # Cẩn thận với quote trong input
-            action_input = finish_match.group(1).strip().strip('"').strip("'")
-        elif search_db_match:
-            action_type = "search_vector_db"
-            action_input = search_db_match.group(1).strip().strip('"').strip("'")
-        elif query_kg_match:
-            action_type = "query_kg"
-            args_str = query_kg_match.group(1)
-            # Tách args, cẩn thận với dấu phẩy trong chuỗi được quote
-            # Ví dụ đơn giản: split by comma, rồi strip quote
-            try:
-                # Sử dụng regex để split by comma, nhưng bỏ qua comma trong quote
-                # Hoặc cách đơn giản hơn là yêu cầu LLM không dùng comma trong string argument nếu được
-                # args = [arg.strip().strip('"').strip("'") for arg in args_str.split(',')] 
-                
-                # Dùng json.loads nếu LLM có thể trả về một list các string
-                # args_str_as_list = "[" + args_str + "]" # Biến nó thành một list JSON
-                # parsed_args = json.loads(args_str_as_list.replace("'", "\"")) # Thay quote đơn bằng đôi cho JSON
-                
-                # Cách an toàn hơn: regex tìm các argument
-                parsed_args = [a.strip().strip('"').strip("'") for a in re.findall(r'(?:[^,"]|"[^"]*")+', args_str)]
-
-                if len(parsed_args) == 4: # subject, relation, object, query_type
-                    action_input = tuple(parsed_args)
-                else:
-                    action_type = "error"
-                    action_input = f"Invalid number of arguments for query_kg. Expected 4, got {len(parsed_args)}. Args: {args_str}"
-            except Exception as e:
-                action_type = "error"
-                action_input = f"Error parsing query_kg arguments '{args_str}': {e}"
-        else:
-            action_type = "error"
-            action_input = f"Unknown or malformed action: {action_call_str}"
+            # Xử lý các kiểu quote khác nhau và chạy qua nhiều dòng
+            finish_text = finish_match.group(1).strip()
             
-        return thought, action_type, action_input
+            # Xử lý trường hợp text có quote
+            if (finish_text.startswith('"') and finish_text.endswith('"')) or \
+               (finish_text.startswith("'") and finish_text.endswith("'")):
+                action_input = finish_text[1:-1]
+            else:
+                action_input = finish_text
+                
+            # Xử lý các ký tự thoát
+            action_input = action_input.replace('\\"', '"').replace("\\'", "'")
+            return thought, action_type, action_input
+            
+        # 2. Xử lý search_vector_db() action
+        search_db_match = re.search(r'search_vector_db\s*\((.+?)(?:\)|$)', action_call_str, re.DOTALL)
+        if search_db_match:
+            action_type = "search_vector_db"
+            search_query = search_db_match.group(1).strip()
+            
+            # Xử lý trường hợp query có quote
+            if (search_query.startswith('"') and search_query.endswith('"')) or \
+               (search_query.startswith("'") and search_query.endswith("'")):
+                action_input = search_query[1:-1]
+            else:
+                action_input = search_query
+                
+            # Xử lý các ký tự thoát
+            action_input = action_input.replace('\\"', '"').replace("\\'", "'")
+            return thought, action_type, action_input
+        
+        # 3. Xử lý query_kg() action - phức tạp nhất vì có nhiều tham số
+        query_kg_match = re.search(r'query_kg\s*\((.+?)(?:\)|$)', action_call_str, re.DOTALL)
+        if query_kg_match:
+            action_type = "query_kg"
+            args_str = query_kg_match.group(1).strip()
+            
+            try:
+                # Phương pháp 1: Xử lý trường hợp JSON format
+                if args_str.startswith('[') and args_str.endswith(']'):
+                    try:
+                        json_str = args_str.replace("'", '"')  # Chuyển single quotes sang double quotes cho JSON
+                        parsed_args = json.loads(json_str)
+                        if len(parsed_args) == 4:
+                            return thought, action_type, tuple(parsed_args)
+                    except json.JSONDecodeError:
+                        pass  # Nếu không phải JSON hợp lệ, thử phương pháp khác
+                
+                # Phương pháp 2: Xử lý trường hợp tham số có tên
+                # Ví dụ: query_kg(subject="Entity", relation="rel", object="obj", query_type="find_relation")
+                named_args = {}
+                named_arg_pattern = r'(\w+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^,\s]*))'
+                for match in re.finditer(named_arg_pattern, args_str):
+                    arg_name = match.group(1)
+                    # Lấy giá trị từ một trong các capturing group
+                    arg_value = match.group(2) or match.group(3) or match.group(4) or ""
+                    named_args[arg_name] = arg_value
+                    
+                if 'subject' in named_args and 'relation' in named_args and 'object' in named_args and 'query_type' in named_args:
+                    return thought, action_type, (
+                        named_args['subject'], 
+                        named_args['relation'], 
+                        named_args['object'], 
+                        named_args['query_type']
+                    )
+                
+                # Phương pháp 3: Sử dụng regex để tách các tham số có quote
+                # Tìm các chuỗi được quote hoặc các token không có dấu phẩy
+                args_pattern = r'(?:"([^"]*)"|\'([^\']*)\'|([^,\s][^,]*[^,\s]))'
+                matches = re.findall(args_pattern, args_str)
+                
+                # Mỗi match sẽ là một tuple với các nhóm capture
+                parsed_args = []
+                for match_groups in matches:
+                    # Lấy giá trị không rỗng đầu tiên trong nhóm
+                    arg = next((group for group in match_groups if group), "")
+                    parsed_args.append(arg)
+                
+                # Phương pháp 4: phương pháp đơn giản nhất, dùng khi các phương pháp khác thất bại
+                if not parsed_args:
+                    parsed_args = [arg.strip().strip('"').strip("'") 
+                                  for arg in re.findall(r'(?:[^,"]|"[^"]*")+', args_str)]
+                
+                if len(parsed_args) == 4:  # subject, relation, object, query_type
+                    return thought, action_type, tuple(parsed_args)
+                else:
+                    return thought, "error", f"Invalid number of arguments for query_kg. Expected 4, got {len(parsed_args)}. Args: {args_str}"
+                    
+            except Exception as e:
+                return thought, "error", f"Error parsing query_kg arguments '{args_str}': {str(e)}"
+        
+        # Nếu không match với bất kỳ action pattern nào
+        # Kiểm tra xem có phải LLM đã viết action dưới dạng text tự nhiên không
+        # Ví dụ "I want to search for..." hoặc "Let's query the knowledge graph..."
+        
+        if "search" in action_call_str.lower() and "vector" in action_call_str.lower():
+            # Tìm một chuỗi được quote - nếu có
+            search_query_match = re.search(r'"([^"]+)"|\'([^\']+)\'', action_call_str)
+            if search_query_match:
+                search_query = search_query_match.group(1) or search_query_match.group(2)
+                return thought, "search_vector_db", search_query
+            else:
+                # Nếu không có quote, dùng toàn bộ phần còn lại
+                search_text = action_call_str.lower().replace("search", "").replace("vector_db", "").replace("vector db", "").strip()
+                if search_text:
+                    return thought, "search_vector_db", search_text
+        
+        if "query" in action_call_str.lower() and "kg" in action_call_str.lower():
+            # Cố gắng trích xuất các phần tử từ text tự nhiên
+            # Đây là phương pháp dự phòng và có thể không hoạt động trong tất cả các trường hợp
+            try:
+                # Tìm chuỗi query_type nếu có
+                query_type_match = re.search(r'type\s*[=:]\s*["\']?(\w+)["\']?', action_call_str, re.IGNORECASE)
+                query_type = query_type_match.group(1) if query_type_match else "find_relation"
+                
+                # Tìm các tham số khác
+                subject_match = re.search(r'subject\s*[=:]\s*["\']?([^"\']+)["\']?', action_call_str, re.IGNORECASE)
+                relation_match = re.search(r'relation\s*[=:]\s*["\']?([^"\']+)["\']?', action_call_str, re.IGNORECASE)
+                object_match = re.search(r'object\s*[=:]\s*["\']?([^"\']+)["\']?', action_call_str, re.IGNORECASE)
+                
+                subject = subject_match.group(1).strip() if subject_match else "?"
+                relation = relation_match.group(1).strip() if relation_match else "?"
+                object_val = object_match.group(1).strip() if object_match else "?"
+                
+                return thought, "query_kg", (subject, relation, object_val, query_type)
+            except Exception:
+                pass  # Nếu cách này thất bại, tiếp tục xuống xử lý lỗi
+        
+        if "finish" in action_call_str.lower():
+            # Trích xuất phần còn lại sau từ khóa finish
+            answer_match = re.search(r'finish\s+(?:with|answer:?)?\s*["\']?(.+)', action_call_str, re.IGNORECASE)
+            if answer_match:
+                return thought, "finish", answer_match.group(1).strip().strip('"').strip("'")
+        
+        # Nếu tất cả các cách trên đều thất bại
+        return thought, "error", f"Unknown or malformed action: {action_call_str}"
 
 
     def solve(self, original_query):
@@ -276,21 +468,27 @@ class DynamicKAGSolver:
 
         # Nếu hết số bước mà chưa finish
         print("\n--- SOLVER: Max reasoning steps reached. Attempting to synthesize final answer. ---")
-        # TODO: Tinh chỉnh prompt tổng hợp này.
+        # Tinh chỉnh prompt tổng hợp để tạo câu trả lời chất lượng cao
         final_synthesis_prompt = f"""
         Original Query: {original_query}
 
-        You have gone through a reasoning process. Here is your scratchpad containing your thoughts, actions, and observations:
+        You have gone through a reasoning process to answer this query about university regulations, policies, and educational procedures at VNU (Vietnam National University). Here is your scratchpad containing your thoughts, actions, and observations:
         --- SCRATCHPAD START ---
         {scratchpad}
         --- SCRATCHPAD END ---
 
-        Based on all the information gathered in your scratchpad, provide the best possible comprehensive final answer to the Original Query.
-        If you cannot answer definitively, clearly state what information is still missing or what uncertainty remains.
+        Based on all the information gathered in your scratchpad:
+        1. Provide a comprehensive, well-structured final answer to the Original Query.
+        2. Only include information that is directly supported by the evidence in the scratchpad.
+        3. Be specific and cite the sources of information where possible (chunks, document names).
+        4. If there are multiple aspects to the answer, organize them with clear sections.
+        5. If you encountered contradictory information, explain the discrepancies.
+        6. If you cannot answer parts of the query, clearly state what information is missing.
+        7. Respond in the same language as the Original Query (Vietnamese or English).
 
-        Final Answer:
+        Final Answer (make it concise but complete):
         """
-        final_answer = llm_utils.get_llm_response(final_synthesis_prompt, max_new_tokens=500, system_message="You are a summarization and final response generation expert.")
+        final_answer = llm_utils.get_llm_response(final_synthesis_prompt, max_new_tokens=500, system_message="You are an expert educational policy analyst specializing in university regulations and academic procedures at VNU. Your task is to synthesize information accurately and comprehensively.")
         return final_answer
 
 if __name__ == "__main__":

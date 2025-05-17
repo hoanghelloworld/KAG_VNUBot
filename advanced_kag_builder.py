@@ -372,6 +372,21 @@ if __name__ == "__main__":
         with open(processed_data_path, 'w', encoding='utf-8') as f:
             json.dump(dummy_processed_data, f, indent=4)
         print(f"Created dummy processed data file for builder testing: {processed_data_path}")
+    else:
+        print(f"Found processed data: {processed_data_path}")
+        with open(processed_data_path, 'r', encoding='utf-8') as f:
+            # Ví dụ: [{"source_id": "doc1.txt", "text_content": "Nội dung file 1..."}, ...]
+            processed_data_list = json.load(f) 
+        
+        print(f"Building KAG from {len(processed_data_list)} processed document(s)...")
+        builder = AdvancedKAGBuilder()
+        builder.build_from_processed_data(processed_data_list) # Sử dụng dữ liệu đã load
+        
+        print("Advanced KAG building process finished.")
+        print(f"Artifacts saved to: {config.ARTIFACTS_DIR}")
+        print(f"  - FAISS Index: {config.FAISS_INDEX_PATH}")
+        print(f"  - Graph GML: {config.GRAPH_PATH}")
+        print(f"  - Doc Store: {config.DOC_STORE_PATH}")
 
     with open(processed_data_path, 'r', encoding='utf-8') as f:
         data_for_builder = json.load(f)

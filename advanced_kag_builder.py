@@ -20,6 +20,23 @@ class AdvancedKAGBuilder:
         self.graph = nx.Graph()
         self.doc_store = {}  # chunk_id -> text_chunk
         self.faiss_id_to_chunk_id = {}
+        
+        if settings.CONTINUE_BUILDING_KAG:
+            self.load_existed_artifacts()
+        
+    def load_existed_artifacts(self):
+        print("SOLVER: Loading FAISS index...")
+        self.faiss_index = faiss.read_index(settings.FAISS_INDEX_PATH)
+        
+        print("SOLVER: Loading Knowledge Graph...")
+        self.graph = nx.read_gml(settings.GRAPH_PATH)
+        
+        print("SOLVER: Loading Doc Store and FAISS ID Map...")
+        with open(settings.DOC_STORE_PATH, 'r', encoding='utf-8') as f:
+            saved_data = json.load(f)
+            self.doc_store = saved_data['doc_store']
+            self.faiss_id_to_chunk_id = {int(k): v for k, v in saved_data['faiss_id_map'].items()}
+        print("SOLVER: All artifacts loaded.")
 
     def _extract_entities_advanced(self, text_chunk, source_id_for_prompt=""):
         prompt = f"""
@@ -70,7 +87,7 @@ class AdvancedKAGBuilder:
         # Giả sử config.prompt_manager.sys_prompt_entity_extractor tồn tại
         system_message_for_entity = getattr(prompt_manager, 'sys_prompt_entity_extractor', "Bạn là một trợ lý AI chuyên trích xuất thực thể dưới dạng JSON theo yêu cầu.")
 
-        response_str = llm_utils.get_llm_response(prompt, max_new_tokens=1000, system_message=system_message_for_entity) # Tăng max_new_tokens nếu cần
+        response_str = llm_utils.get_llm_response(prompt, max_new_tokens=3000, system_message=system_message_for_entity) # Tăng max_new_tokens nếu cần
         
         json_to_parse = ""
         try:
@@ -174,7 +191,7 @@ class AdvancedKAGBuilder:
         Relationships (JSON list of triples inside <final_json_answer> tags):
         """
         system_message_for_relation = getattr(prompt_manager, 'sys_prompt_relation_extractor', "Bạn là một trợ lý AI chuyên trích xuất thông tin quan hệ dưới dạng JSON theo yêu cầu.")
-        response_str = llm_utils.get_llm_response(prompt, max_new_tokens=1500, system_message=system_message_for_relation)
+        response_str = llm_utils.get_llm_response(prompt, max_new_tokens=3000, system_message=system_message_for_relation)
         
         json_to_parse = ""
         try:
@@ -312,46 +329,13 @@ class AdvancedKAGBuilder:
 
 
                 chunk_id_counter += 1
-                if chunk_id_counter % 5 == 0: # Log more frequently for development
-                    print(f"KAG BUILDER: Processed {chunk_id_counter} chunks...")
+                # if chunk_id_counter % 5 == 0: # Log more frequently for development
+                #     print(f"KAG BUILDER: Processed {chunk_id_counter} chunks...")
                 pbar.update(1)
                 
             #update vector index and save artifacts after each document
             self.build_vector_index_and_save_artifacts(all_chunks_for_embedding)
         
-        # # --- Build Vector Index ---
-        # if not all_chunks_for_embedding:
-        #     print("KAG BUILDER: No chunks to build vector index from.")
-        #     return
-
-        # chunk_texts_for_embedding = [chunk['text'] for chunk in all_chunks_for_embedding]
-        # chunk_ids_for_index = [chunk['id'] for chunk in all_chunks_for_embedding]
-
-        # print("KAG BUILDER: Generating embeddings for chunks...")
-        # embeddings = llm_utils.get_embeddings(chunk_texts_for_embedding).cpu().numpy()
-
-        # dimension = embeddings.shape[1]
-        # faiss_index = faiss.IndexFlatL2(dimension)
-        # # Use IndexIDMap2 to allow ID deletion later if needed (optional)
-        # # Or keep IndexIDMap if deletion is not needed
-        # self.faiss_index_map = faiss.IndexIDMap(faiss_index) 
-
-        # numeric_ids_for_faiss = list(range(len(chunk_ids_for_index)))
-        # self.faiss_id_to_chunk_id = {i: chunk_id for i, chunk_id in enumerate(chunk_ids_for_index)}
-        
-        # self.faiss_index_map.add_with_ids(embeddings, numeric_ids_for_faiss)
-        # print(f"KAG BUILDER: FAISS index built with {self.faiss_index_map.ntotal} vectors.")
-
-        # # --- Store Artifacts ---
-        # faiss.write_index(self.faiss_index_map, settings.FAISS_INDEX_PATH)
-        # nx.write_gml(self.graph, settings.GRAPH_PATH) # Save KG graph
-        
-        # # Save doc_store (chunk text) and FAISS ID mapping
-        # with open(settings.DOC_STORE_PATH, 'w', encoding='utf-8') as f:
-        #     json.dump({"doc_store": self.doc_store, 
-        #                "faiss_id_map": self.faiss_id_to_chunk_id}, 
-        #               f, ensure_ascii=False, indent=4)
-        # print("KAG BUILDER: All artifacts (FAISS, KG, DocStore) saved.")
         
     def build_vector_index_and_save_artifacts(self, all_chunks_for_embedding):
         # ... (phần code xây dựng FAISS index giữ nguyên từ file của bạn) ...
@@ -388,6 +372,7 @@ class AdvancedKAGBuilder:
         # --- Chuẩn bị và Lưu Đồ thị KG ---
         print("KAG BUILDER: Post-processing graph for GML compatibility...")
         processed_graph = self._post_process_graph_for_gml(self.graph)
+        # processed_graph = self.graph
         
         print("KAG BUILDER: Saving Knowledge Graph to GML file...")
         nx.write_gml(processed_graph, settings.GRAPH_PATH) # Sử dụng config và đồ thị đã xử lý

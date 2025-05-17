@@ -78,7 +78,7 @@ def get_hf_llm_response(prompt_text, max_new_tokens=250, system_message="You are
                 break
     return response.strip()
 
-def get_llm_response(prompt_text, max_new_tokens=250, system_message="You are a helpful assistant.", stop_sequences=None):
+def get_llm_response(prompt_text, max_new_tokens=3000, system_message="You are a helpful assistant.", stop_sequences=None):
     """
     Send prompt to LLM and get response.
     If TOGETHER_API_KEY exists in settings, use Together API.

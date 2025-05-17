@@ -1,16 +1,14 @@
-# advanced_kag_builder.py
 import networkx as nx
 import faiss
 import json
 import os
 from langchain.text_splitter import RecursiveCharacterTextSplitter # Hoặc text splitter tự viết
 
-import config
+from config import settings, prompt_manager
 import llm_utils 
 
 class AdvancedKAGBuilder:
-    def __init__(self, chunk_size=config.CHUNK_SIZE, chunk_overlap=config.CHUNK_OVERLAP):
-        # TODO: Có thể cần tùy chỉnh text_splitter nếu cần
+    def __init__(self, chunk_size=settings.CHUNK_SIZE, chunk_overlap=settings.CHUNK_OVERLAP):
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
@@ -22,43 +20,47 @@ class AdvancedKAGBuilder:
         self.faiss_id_to_chunk_id = {}
 
     def _extract_entities_advanced(self, text_chunk, source_id_for_prompt=""):
-        """
-        Trích xuất thực thể nâng cao bằng LLM.
-        """
-        # TODO: Thiết kế prompt NER chi tiết.
-        #       Yêu cầu LLM trả về JSON list: [{"text": "...", "type": "...", "start_char": ..., "end_char": ...}]
-        #       Xử lý output JSON từ LLM, bao gồm cả trường hợp lỗi parsing.
         prompt = f"""
-        Context Source ID (optional): {source_id_for_prompt}
+        Nhiệm vụ: Từ Text Chunk được cung cấp, hãy trích xuất tất cả các thực thể có tên (named entities). Với mỗi thực thể, hãy chỉ định rõ:
+        1.  `text`: Nội dung văn bản của thực thể.
+        2.  `type`: Loại của thực thể (ví dụ: PERSON, ORGANIZATION, LOCATION, DATE, PRODUCT_NAME, EVENT).
+        3.  `start_char`: Vị trí ký tự bắt đầu của thực thể trong Text Chunk (tính từ 0).
+        4.  `end_char`: Vị trí ký tự kết thúc của thực thể trong Text Chunk (không bao gồm ký tự ở vị trí này).
+
+        Context Source ID (tùy chọn để tham khảo): {source_id_for_prompt}
         Text Chunk:
         ---
         {text_chunk}
         ---
-        Extract all named entities from the Text Chunk. For each entity, specify its text, type (e.g., PERSON, ORGANIZATION, LOCATION, COURSE_NAME, TOPIC, TECHNOLOGY, DATE), and its character start and end offset within the Text Chunk.
-        
-        For university regulations and educational documents, pay special attention to these entity types:
-        - PROGRAM: Educational programs like "Chương trình đào tạo", "Chương trình chuẩn", etc.
-        - COURSE: Course names or course codes
-        - REGULATION: Names of regulations, rules, or policies
-        - DOCUMENT: Document identifiers like "Quyết định số XX", "Thông tư số XX"
-        - REQUIREMENT: Requirements like "Chuẩn đầu ra", "Điều kiện tốt nghiệp"
-        - ACADEMIC_UNIT: Faculties, departments, or other academic units
-        - ROLE: Roles or positions in the university
-        - CREDIT: Credit-related information
-        - EVALUATION: Evaluation methods, grading systems
-        
-        Return the result as a VALID JSON list of objects. Each object should have "text", "type", "start_char", and "end_char" keys.
-        If no entities are found, return an empty JSON list [].
 
-        Example Output:
+        Các loại thực thể cần đặc biệt chú ý đối với văn bản quy chế và tài liệu giáo dục (ưu tiên sử dụng các loại này nếu phù hợp, ngoài ra có thể dùng các loại chung khác nếu cần thiết):
+        - PROGRAM: Các chương trình giáo dục (ví dụ: "Chương trình đào tạo tiên tiến", "Chương trình cử nhân chuẩn Quốc tế").
+        - COURSE: Tên môn học hoặc mã môn học (ví dụ: "Giải tích I", "INT1001").
+        - REGULATION: Tên các quy định, quy chế, chính sách (ví dụ: "Quy chế đào tạo đại học", "Nội quy học đường").
+        - DOCUMENT: Các định danh tài liệu (ví dụ: "Quyết định số 123/QĐ-ĐHQGHN", "Thông tư 08/2021/TT-BGDĐT").
+        - REQUIREMENT: Các yêu cầu, chuẩn mực (ví dụ: "Chuẩn đầu ra tiếng Anh", "Điều kiện xét tốt nghiệp").
+        - ACADEMIC_UNIT: Tên khoa, phòng, ban, viện, trung tâm hoặc đơn vị học thuật (ví dụ: "Khoa Công nghệ Thông tin", "Phòng Đào tạo").
+        - ROLE: Chức danh hoặc vai trò trong trường đại học (ví dụ: "Hiệu trưởng", "Sinh viên", "Giảng viên").
+        - CREDIT: Thông tin liên quan đến tín chỉ (ví dụ: "120 tín chỉ", "3 tín chỉ học phí").
+        - EVALUATION: Phương pháp đánh giá, hệ thống điểm (ví dụ: "Thi cuối kỳ", "Điểm tổng kết hệ 4").
+        - FEE: Các loại học phí, lệ phí (ví dụ: "học phí học kỳ 1", "lệ phí xét tuyển").
+        - DEADLINE: Các mốc thời gian, hạn chót (ví dụ: "hạn nộp hồ sơ", "ngày thi").
+
+        QUAN TRỌNG:
+        - Kết quả PHẢI trả về dưới dạng một danh sách JSON (JSON list) các đối tượng. TUYỆT ĐỐI tuân thủ định dạng JSON.
+        - Mỗi đối tượng trong danh sách JSON phải có đủ 4 keys: "text", "type", "start_char", và "end_char".
+        - Nếu không tìm thấy thực thể nào, hãy trả về một danh sách JSON rỗng: [].
+
+        Ví dụ về định dạng JSON đầu ra mong muốn:
         [
-            {{"text": "John McCarthy", "type": "PERSON", "start_char": 30, "end_char": 42}},
-            {{"text": "Artificial Intelligence", "type": "TOPIC", "start_char": 0, "end_char": 20}}
+            {{"text": "Trường Đại học Công nghệ", "type": "ACADEMIC_UNIT", "start_char": 50, "end_char": 75}},
+            {{"text": "Quy chế học vụ", "type": "REGULATION", "start_char": 102, "end_char": 118}},
+            {{"text": "sinh viên", "type": "ROLE", "start_char": 15, "end_char": 23}}
         ]
 
         Entities (JSON list):
         """
-        response_str = llm_utils.get_llm_response(prompt, max_new_tokens=500, system_message=config.settings.prompt_manager.sys_prompt_entity_extractor)
+        response_str = llm_utils.get_llm_response(prompt, max_new_tokens=500, system_message=prompt_manager.sys_prompt_entity_extractor)
         try:
             entities = json.loads(response_str)
             if not isinstance(entities, list): # Đảm bảo là list
@@ -93,53 +95,59 @@ class AdvancedKAGBuilder:
         """
         if not extracted_entities:
             return []
-            
-        # TODO:  Thiết kế prompt RE chi tiết.
-        #       Yêu cầu LLM trả về JSON list các triple: [subject_text, relation_type, object_text]
-        #       Sử dụng extracted_entities (có type) để giúp LLM.
-        #       Định nghĩa một tập các relation_type mong muốn hoặc để LLM tự do hơn.
-        
+
         # Chuẩn bị danh sách thực thể cho prompt
         entities_for_prompt = [{"text": ent["text"], "type": ent["type"]} for ent in extracted_entities]
 
         prompt = f"""
-        Context Source ID (optional): {source_id_for_prompt}
+        Nhiệm vụ: Từ Text Chunk và danh sách Extracted Entities (các thực thể đã được trích xuất) được cung cấp, hãy xác định các mối quan hệ có ý nghĩa giữa các thực thể đó.
+
+        Context Source ID (tùy chọn để tham khảo): {source_id_for_prompt}
         Text Chunk:
         ---
         {text_chunk}
         ---
-        Extracted Entities (with types):
-        {json.dumps(entities_for_prompt, indent=2)}
+        Extracted Entities (Thực thể đã trích xuất, kèm theo loại):
+        {json.dumps(entities_for_prompt, indent=2, ensure_ascii=False)} 
         ---
-        Identify meaningful relationships (triples) between the Extracted Entities based on the Text Chunk.
-        A triple should be in the format: ["subject_entity_text", "relation_description", "object_entity_text"].
-        
-        For university regulations and educational contexts, focus on these relationship types:
-        - "belongs_to": Entity is part of another entity (e.g., a course belongs to a program)
-        - "requires": Entity requires another entity (e.g., a course requires prerequisites)
-        - "managed_by": Entity is managed or administered by another entity
-        - "defined_in": Entity is defined or described in a document
-        - "has_component": Entity has another entity as a component
-        - "evaluated_by": Entity is evaluated using another entity
-        - "equivalent_to": Entity is equivalent to another entity
-        - "succeeded_by": Entity was succeeded or replaced by another entity
-        - "created_by": Entity was created by another entity
-        - "modified_by": Entity was modified by another entity
-        
-        The "relation_description" should be a concise verb phrase that accurately represents the relationship.
-        Focus on relationships explicitly stated or strongly implied in the text.
-        Return the result as a VALID JSON list of triples.
-        If no clear relationships are found, return an empty JSON list [].
 
-        Example Output:
+        Hướng dẫn xác định mối quan hệ:
+        1.  Mỗi mối quan hệ phải được biểu diễn dưới dạng một bộ ba (triple) JSON: 
+            `["subject_entity_text", "relation_description", "object_entity_text"]`
+            Trong đó:
+            -   `subject_entity_text`: PHẢI là nội dung văn bản (text) của một thực thể từ danh sách Extracted Entities đóng vai trò là chủ thể.
+            -   `relation_description`: PHẢI là một cụm động từ ngắn gọn bằng Tiếng Việt mô tả chính xác mối quan hệ. Nên chuẩn hóa bằng cách viết thường và dùng dấu gạch dưới thay cho khoảng trắng (ví dụ: "là_điều_kiện_tiên_quyết_của", "được_quy_định_trong").
+            -   `object_entity_text`: PHẢI là nội dung văn bản (text) của một thực thể từ danh sách Extracted Entities đóng vai trò là đối tượng.
+
+        2.  Chỉ trích xuất các mối quan hệ được nêu rõ ràng hoặc có thể suy luận trực tiếp và mạnh mẽ từ Text Chunk. KHÔNG suy diễn hoặc thêm thông tin không có trong văn bản.
+        3.  Ưu tiên sử dụng các loại mô tả quan hệ (relation_description) sau nếu phù hợp với ngữ cảnh văn bản quy chế và tài liệu giáo dục. Bạn cũng có thể sử dụng các mô tả khác nếu chúng diễn tả đúng mối quan hệ hơn:
+            - "thuộc_về": Thực thể là một phần của thực thể khác (ví dụ: một môn học thuộc về một chương trình đào tạo).
+            - "yêu_cầu": Thực thể này yêu cầu thực thể kia (ví dụ: một môn học yêu cầu môn tiên quyết).
+            - "được_quản_lý_bởi": Thực thể được quản lý hoặc điều hành bởi thực thể khác.
+            - "được_định_nghĩa_trong": Thực thể được định nghĩa hoặc mô tả trong một tài liệu/quy định.
+            - "bao_gồm_thành_phần": Thực thể này có thực thể kia là một thành phần.
+            - "được_đánh_giá_bằng": Thực thể được đánh giá bằng phương pháp/thực thể khác.
+            - "tương_đương_với": Thực thể này tương đương với thực thể kia.
+            - "kế_thừa_bởi": Thực thể này được kế thừa hoặc thay thế bởi thực thể kia.
+            - "được_tạo_bởi": Thực thể được tạo ra bởi thực thể khác.
+            - "được_sửa_đổi_bởi": Thực thể được sửa đổi bởi thực thể khác.
+            - "áp_dụng_cho": Quy định/chính sách này áp dụng cho đối tượng/thực thể kia.
+            - "có_liên_quan_đến": Hai thực thể có mối liên hệ chung chung.
+
+        QUAN TRỌNG:
+        - Kết quả PHẢI trả về dưới dạng một danh sách JSON (JSON list) các bộ ba. TUYỆT ĐỐI tuân thủ định dạng JSON.
+        - Nếu không tìm thấy mối quan hệ rõ ràng nào, hãy trả về một danh sách JSON rỗng: [].
+
+        Ví dụ về định dạng JSON đầu ra mong muốn:
         [
-            ["Introduction to AI", "mentions_topic", "Machine Learning"],
-            ["Advanced Python", "is_prerequisite_for", "Data Science Capstone"]
+            ["Chương trình Tiên tiến ngành CNTT", "yêu cầu", "Chứng chỉ IELTS 6.0"],
+            ["Quy chế tuyển sinh", "được_định_nghĩa_trong", "Thông tư số 05/2023/TT-BGDĐT"],
+            ["Sinh viên K68", "thuộc_về", "Khoa Luật"]
         ]
 
         Relationships (JSON list of triples):
         """
-        response_str = llm_utils.get_llm_response(prompt, max_new_tokens=500, system_message=config.settings.prompt_manager.sys_prompt_relation_extractor)
+        response_str = llm_utils.get_llm_response(prompt, max_new_tokens=500, system_message=prompt_manager.sys_prompt_relation_extractor)
         try:
             relations = json.loads(response_str)
             if not isinstance(relations, list):
@@ -298,11 +306,11 @@ class AdvancedKAGBuilder:
         print(f"KAG BUILDER: FAISS index built with {self.faiss_index_map.ntotal} vectors.")
 
         # --- Lưu trữ Artifacts ---
-        faiss.write_index(self.faiss_index_map, config.FAISS_INDEX_PATH)
-        nx.write_gml(self.graph, config.GRAPH_PATH) # Lưu đồ thị KG
+        faiss.write_index(self.faiss_index_map, settings.FAISS_INDEX_PATH)
+        nx.write_gml(self.graph, settings.GRAPH_PATH) # Lưu đồ thị KG
         
         # Lưu doc_store (text của chunk) và mapping ID FAISS
-        with open(config.DOC_STORE_PATH, 'w', encoding='utf-8') as f:
+        with open(settings.DOC_STORE_PATH, 'w', encoding='utf-8') as f:
             json.dump({"doc_store": self.doc_store, 
                        "faiss_id_map": self.faiss_id_to_chunk_id}, 
                       f, ensure_ascii=False, indent=4)
@@ -361,7 +369,7 @@ if __name__ == "__main__":
     # TODO:  Chạy file này sau khi Người 1 đã tạo ra "all_processed_texts.json".
     #       Cần có file llm_utils.py và config.py hoạt động.
     
-    processed_data_path = os.path.join(config.PROCESSED_DATA_DIR, "all_processed_texts.json")
+    processed_data_path = os.path.join(settings.PROCESSED_DATA_DIR, "all_processed_texts.json")
     if not os.path.exists(processed_data_path):
         print(f"Processed data file not found: {processed_data_path}. Please run data_processor.py first.")
         # Tạo file dummy để test builder

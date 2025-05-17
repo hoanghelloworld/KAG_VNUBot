@@ -30,54 +30,66 @@ class DynamicKAGSolver:
 
         # Tinh chỉnh prompt dựa trên thử nghiệm
         self.reason_act_prompt_template_str = """
-        You are a reasoning agent specialized in answering questions about university regulations, policies, and educational procedures at VNU (Vietnam National University). Analyze the Original Query carefully to understand what information is required.
+        Bạn là một Tác tử Suy luận AI (AI Reasoning Agent) chuyên biệt, nhiệm vụ của bạn là trả lời các câu hỏi liên quan đến quy chế, chính sách, và thủ tục giáo dục tại Đại học Quốc gia Hà Nội (VNU) một cách chính xác và toàn diện.
 
-        You have access to the following tools:
-        1. `search_vector_db(search_query: str)`: Searches the vector database for relevant text chunks based on the `search_query`. Use this to find regulations, definitions, or contextual information. Make your search queries specific and in Vietnamese when appropriate.
-           Examples:
-           - `search_vector_db("quy định về học phí đại học quốc gia Hà Nội")`
-           - `search_vector_db("cấu trúc chương trình đào tạo")` 
-           - `search_vector_db("điều kiện mở ngành đào tạo mới")`
+        **Bối cảnh và Mục tiêu:**
+        Câu hỏi gốc từ người dùng: {original_query}
+        Mục tiêu của bạn là cung cấp câu trả lời cuối cùng cho Câu hỏi gốc này.
 
-        2. `query_kg(subject: str, relation: str, object: str, query_type: str)`: Queries the knowledge graph to find relationships between concepts.
-           Examples:
-           - To find relationships between entities: 
-             `query_kg("Học phí", "?", "Chương trình đào tạo", query_type="find_relation")`
-           - To find entities related to a concept via a specific relation: 
-             `query_kg("Chuẩn đầu ra", "belongs_to", "?", query_type="find_object")` 
-             `query_kg("?", "manages", "Khóa luận tốt nghiệp", query_type="find_subject")`
-           - To get attributes and relationships of an entity: 
-             `query_kg("Đại học Quốc gia Hà Nội", "?", "?", query_type="get_attributes")`
-           - To find documents mentioning an entity: 
-             `query_kg("Chương trình đào tạo", "mentioned_in_chunk", "?", query_type="find_mentioning_chunks")`
-           - To find entities by type:
-             `query_kg("document", "entity_type", "?", query_type="find_entity_by_type")`
-           - To list entities in the knowledge graph:
-             `query_kg("?", "?", "?", query_type="list_entities")`
+        **Các công cụ bạn có thể sử dụng:**
 
-        3. `finish(final_answer: str)`: When you have gathered sufficient information to answer the Original Query comprehensively, use this to provide your final answer. Make sure your answer is well-structured, accurate, and cites specific regulations or documents.
+        1.  `search_vector_db(search_query: str)`
+            *   Mô tả: Tìm kiếm trong cơ sở dữ liệu vector để truy xuất các đoạn văn bản (text chunks) liên quan dựa trên `search_query`.
+            *   Khi nào sử dụng: Khi cần tìm định nghĩa, quy định cụ thể, thông tin ngữ cảnh, hoặc các văn bản liên quan đến một chủ đề.
+            *   Lưu ý: `search_query` nên cụ thể và sử dụng Tiếng Việt để có kết quả tốt nhất với dữ liệu của VNU.
+            *   Ví dụ:
+                -   `search_vector_db(search_query="quy định về miễn giảm học phí cho sinh viên Đại học Quốc gia Hà Nội")`
+                -   `search_vector_db(search_query="thủ tục đăng ký xét tốt nghiệp chương trình cử nhân")`
+                -   `search_vector_db(search_query="điều kiện và quy trình mở ngành đào tạo mới tại VNU")`
 
-        Original Query: {original_query}
+        2.  `query_kg(subject: str, relation: str, object: str, query_type: str)`
+            *   Mô tả: Truy vấn Đồ thị Tri thức (Knowledge Graph - KG) để tìm các thực thể và mối quan hệ giữa chúng.
+            *   Các tham số:
+                -   `subject`: Chủ thể của mối quan hệ (có thể là '?' để tìm kiếm).
+                -   `relation`: Loại mối quan hệ (có thể là '?' để tìm kiếm). Ví dụ: "thuộc_về", "yêu_cầu", "được_quy_định_trong".
+                -   `object`: Đối tượng của mối quan hệ (có thể là '?' để tìm kiếm).
+                -   `query_type`: Loại truy vấn, bao gồm:
+                    *   `find_relation`: Tìm mối quan hệ giữa `subject` và `object` đã biết. (VD: `query_kg(subject="Học phí", relation="?", object="Chương trình đào tạo", query_type="find_relation")`)
+                    *   `find_object`: Tìm `object` khi biết `subject` và `relation`. (VD: `query_kg(subject="Chuẩn đầu ra", relation="thuộc_về", object="?", query_type="find_object")`)
+                    *   `find_subject`: Tìm `subject` khi biết `relation` và `object`. (VD: `query_kg(subject="?", relation="quản_lý_bởi", object="Phòng Đào tạo", query_type="find_subject")`)
+                    *   `get_attributes`: Lấy tất cả thuộc tính và mối quan hệ của một `subject`. (VD: `query_kg(subject="Đại học Quốc gia Hà Nội", relation="?", object="?", query_type="get_attributes")`)
+                    *   `find_mentioning_chunks`: Tìm các chunk văn bản trong vectorDB có đề cập đến một `subject`. (VD: `query_kg(subject="Chương trình đào tạo tiên tiến", relation="mentioned_in_chunk", object="?", query_type="find_mentioning_chunks")`)
+                    *   `find_entity_by_type`: Tìm các thực thể theo một loại nhất định (ví dụ: "REGULATION", "DOCUMENT", "ACADEMIC_UNIT"). (VD: `query_kg(subject="?", relation="has_type", object="DOCUMENT", query_type="find_entity_by_type")`)
+                    *   `list_entities`: Liệt kê các thực thể trong KG (có thể cần thêm tham số để giới hạn). (VD: `query_kg(subject="?", relation="?", object="?", query_type="list_entities")`)
+            *   Lưu ý: Sử dụng tên thực thể và loại quan hệ bằng Tiếng Việt đã được chuẩn hóa trong KG.
 
-        Scratchpad (your thought process, actions taken, and observations):
+        3.  `finish(final_answer: str)`
+            *   Mô tả: Sử dụng công cụ này KHI VÀ CHỈ KHI bạn đã thu thập ĐỦ thông tin để trả lời Câu hỏi gốc một cách toàn diện và chính xác.
+            *   `final_answer`: Câu trả lời cuối cùng của bạn. Câu trả lời nên được trình bày rõ ràng, dễ hiểu, và nếu có thể, hãy trích dẫn các quy định hoặc tài liệu cụ thể đã sử dụng.
+
+        **Lịch sử Suy luận và Quan sát (Scratchpad):**
+        Đây là những gì bạn đã làm và những gì bạn đã học được cho đến nay. Hãy sử dụng thông tin này để định hướng suy nghĩ tiếp theo của bạn.
         ---
         {scratchpad}
         ---
 
-        Based on the Original Query and your Scratchpad, formulate your next Thought and the Action to take.
-        Your Thought should analyze what information you have gathered so far, what is still missing, and what your next step should be.
-        Your Action MUST be one of the tools described above, with the correct arguments.
+        **Quy trình làm việc bắt buộc:**
 
-        Follow this step-by-step reasoning process:
-        1. Understand what information you need to answer the query
-        2. Gather relevant information using search_vector_db and query_kg
-        3. Analyze the information to identify gaps or contradictions
-        4. Continue collecting information until you have enough to answer completely
-        5. Provide a comprehensive answer with finish() when ready
+        1.  **Hiểu rõ Câu hỏi gốc:** Phân tích kỹ lưỡng `original_query` để xác định chính xác thông tin cần tìm.
+        2.  **Lập kế hoạch và Thu thập thông tin:**
+            *   Quyết định thông tin nào cần thiết và công cụ nào (`search_vector_db` hoặc `query_kg`) phù hợp để lấy thông tin đó.
+            *   Thực hiện hành động (Action) để thu thập thông tin.
+        3.  **Phân tích Kết quả và Cập nhật Scratchpad:**
+            *   Ghi lại kết quả quan sát được từ hành động vào Scratchpad.
+            *   Đánh giá xem thông tin đã đủ chưa, có cần thêm thông tin gì, hoặc có mâu thuẫn nào không.
+        4.  **Lặp lại:** Tiếp tục các bước 2-3 cho đến khi bạn tự tin rằng đã có đủ thông tin để trả lời đầy đủ.
+        5.  **Hoàn thành:** Khi đã sẵn sàng, sử dụng công cụ `finish()` để cung cấp câu trả lời cuối cùng.
 
-        Format your response STRICTLY as:
-        Thought: [Your thought process]
-        Action: [Call one of the tools, e.g., `search_vector_db("quy định học phí")` or `finish("Theo quy định...")`]
+        **Định dạng Phản hồi BẮT BUỘC:**
+        Bạn PHẢI trả lời bằng định dạng sau. KHÔNG thêm bất kỳ nội dung nào khác ngoài cấu trúc này.
+
+        Thought: [Trình bày chi tiết quá trình suy nghĩ của bạn ở đây. Phân tích những gì bạn đã biết từ Scratchpad, thông tin nào còn thiếu, và tại sao bạn chọn hành động tiếp theo. Suy nghĩ bằng Tiếng Việt.]
+        Action: [CHỈ MỘT trong các lệnh gọi công cụ sau: `search_vector_db(...)`, `query_kg(...)`, hoặc `finish(...)`. Đảm bảo các tham số là chính xác.]
         """
         self.stop_sequences_for_llm_action = ["Action:"] # Để LLM dừng sau khi tạo Thought
 
@@ -422,7 +434,7 @@ class DynamicKAGSolver:
             # # Sau đó, có thể tạo prompt mới chỉ để lấy Action, hoặc parse cả hai từ một response
             
             # Cách tiếp cận đơn giản hơn: lấy cả thought và action trong 1 lần gọi
-            llm_full_output = llm_utils.get_llm_response(current_prompt, max_new_tokens=300, system_message=config.settings.prompt_manager.sys_prompt_reasoning_agent)
+            llm_full_output = llm_utils.get_llm_response(current_prompt, max_new_tokens=300, system_message=config.prompt_manager.sys_prompt_reasoning_agent)
             print(f"LLM Full Output (Thought & Action):\n{llm_full_output}")
 
             thought, action_type, action_input = self._parse_llm_action_output(llm_full_output)
@@ -468,27 +480,47 @@ class DynamicKAGSolver:
 
         # Nếu hết số bước mà chưa finish
         print("\n--- SOLVER: Max reasoning steps reached. Attempting to synthesize final answer. ---")
-        # Tinh chỉnh prompt tổng hợp để tạo câu trả lời chất lượng cao
         final_synthesis_prompt = f"""
-        Original Query: {original_query}
+        **Nhiệm vụ Cuối cùng: Tổng hợp Câu trả lời Toàn diện**
 
-        You have gone through a reasoning process to answer this query about university regulations, policies, and educational procedures at VNU (Vietnam National University). Here is your scratchpad containing your thoughts, actions, and observations:
+        **Câu hỏi gốc của người dùng (Original Query):** {original_query}
+
+        **Bối cảnh:** Bạn đã trải qua một quy trình suy luận gồm nhiều bước để thu thập thông tin nhằm trả lời Câu hỏi gốc ở trên, liên quan đến quy chế, chính sách, và thủ tục giáo dục tại Đại học Quốc gia Hà Nội (VNU). Toàn bộ quá trình suy nghĩ, các hành động đã thực hiện, và những kết quả quan sát được (Observations) đã được ghi lại trong Scratchpad dưới đây.
+
+        **Lịch sử Suy luận và Quan sát (Scratchpad):**
         --- SCRATCHPAD START ---
         {scratchpad}
         --- SCRATCHPAD END ---
 
-        Based on all the information gathered in your scratchpad:
-        1. Provide a comprehensive, well-structured final answer to the Original Query.
-        2. Only include information that is directly supported by the evidence in the scratchpad.
-        3. Be specific and cite the sources of information where possible (chunks, document names).
-        4. If there are multiple aspects to the answer, organize them with clear sections.
-        5. If you encountered contradictory information, explain the discrepancies.
-        6. If you cannot answer parts of the query, clearly state what information is missing.
-        7. Respond in the same language as the Original Query (Vietnamese or English).
+        **Yêu cầu dành cho bạn:**
+        Dựa TRÊN TOÀN BỘ thông tin đã thu thập được trong Scratchpad, hãy thực hiện các yêu cầu sau để tạo ra câu trả lời cuối cùng cho Câu hỏi gốc:
 
-        Final Answer (make it concise but complete):
+        1.  **Câu trả lời Toàn diện và Có Cấu trúc:**
+            *   Cung cấp một câu trả lời đầy đủ, bao quát tất cả các khía cạnh của Câu hỏi gốc mà bạn có thể giải quyết dựa trên Scratchpad.
+            *   Nếu câu trả lời có nhiều phần, hãy tổ chức chúng một cách logic, sử dụng tiêu đề con (subheadings) hoặc gạch đầu dòng để dễ đọc.
+
+        2.  **Chỉ dựa vào Bằng chứng:**
+            *   TUYỆT ĐỐI chỉ sử dụng thông tin có trong Scratchpad. KHÔNG đưa vào bất kỳ thông tin nào không được hỗ trợ bởi bằng chứng đã thu thập.
+            *   Nếu Scratchpad cho thấy không có thông tin cho một phần của câu hỏi, hãy nêu rõ điều đó.
+
+        3.  **Trích dẫn Nguồn (Citing Sources):**
+            *   Cố gắng chỉ rõ nguồn gốc của thông tin bạn sử dụng trong câu trả lời (ví dụ: "Theo thông tin từ Chunk ID: abc_chunk_1", "Dựa trên quy định XYZ được tìm thấy trong tài liệu Y"). Điều này tăng độ tin cậy.
+
+        4.  **Xử lý Thông tin Mâu thuẫn (If any):**
+            *   Nếu Scratchpad chứa thông tin có vẻ mâu thuẫn, hãy cố gắng làm rõ hoặc giải thích sự khác biệt đó nếu có thể. Nếu không, hãy chỉ ra rằng có sự mâu thuẫn.
+
+        5.  **Thừa nhận Thông tin Còn thiếu:**
+            *   Nếu, sau toàn bộ quá trình, bạn vẫn không thể trả lời một phần nào đó của Câu hỏi gốc do thiếu thông tin trong Scratchpad, hãy thẳng thắn thừa nhận điều này. Đừng cố gắng đoán mò.
+
+        6.  **Ngôn ngữ Phản hồi:**
+            *   Trả lời bằng ngôn ngữ tương tự như Câu hỏi gốc (ví dụ: nếu câu hỏi bằng Tiếng Việt, hãy trả lời bằng Tiếng Việt).
+
+        7.  **Phong cách:**
+            *   Viết một cách chuyên nghiệp, khách quan, rõ ràng và dễ hiểu.
+
+        **Câu trả lời cuối cùng của bạn (Final Answer - hãy trình bày một cách mạch lạc và đầy đủ):**
         """
-        final_answer = llm_utils.get_llm_response(final_synthesis_prompt, max_new_tokens=500, system_message=config.settings.prompt_manager.sys_prompt_educational_analyst)
+        final_answer = llm_utils.get_llm_response(final_synthesis_prompt, max_new_tokens=500, system_message=config.prompt_manager.sys_prompt_educational_analyst)
         return final_answer
 
 if __name__ == "__main__":
@@ -511,7 +543,7 @@ if __name__ == "__main__":
         # answer1 = solver.solve(query1)
         # print(f"\n--- FINAL ANSWER (Query 1) ---\n{answer1}")
 
-        query2 = "Tell me about John McCarthy's contributions related to AI and Lisp."
+        query2 = """QUYẾT ĐỊNH VỀ VIỆC BAN HÀNH QUY CHẾ ĐÀO TẠO TIẾN SĨ TẠI ĐẠI HỌC QUỐC GIA HÀ NỘI được ban hành vào ngày tháng năm nào?"""
         print(f"\nSolving Query 2: {query2}")
         answer2 = solver.solve(query2)
         print(f"\n--- FINAL ANSWER (Query 2) ---\n{answer2}")

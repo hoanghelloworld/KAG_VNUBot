@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     TOGETHER_MODEL_NAME: Optional[str] = "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"
     # TOGETHER_MODEL_NAME: Optional[str] = "deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free"
     
+    # --- Continue building KAG ---
+    CONTINUE_BUILDING_KAG: bool = False
+    
     
     class Config:
         env_prefix = ""  # No prefix for environment variables

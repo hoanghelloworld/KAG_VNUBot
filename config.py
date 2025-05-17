@@ -1,7 +1,10 @@
 import torch
 import os
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 from pydantic_settings import BaseSettings
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class PromptManager:
     """Manages system prompts for different components of the application."""
@@ -53,9 +56,9 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
     
     # --- Artifact Storage Paths ---
-    FAISS_INDEX_PATH: Optional[str] = ""   
-    GRAPH_PATH: Optional[str] = ""        
-    DOC_STORE_PATH: Optional[str] = ""    
+    FAISS_INDEX_PATH: str = os.path.join(ARTIFACTS_DIR, "my_faiss_index.index")
+    GRAPH_PATH: str = os.path.join(ARTIFACTS_DIR, "my_knowledge_graph.gml")
+    DOC_STORE_PATH: str = os.path.join(ARTIFACTS_DIR, "doc_store.json")
     
     # --- KAGBuilder Configuration ---
     CHUNK_SIZE: int = 300
@@ -65,35 +68,23 @@ class Settings(BaseSettings):
     TOP_K_RETRIEVAL: int = 2
     MAX_REASONING_STEPS: int = 4
     
-    # --- Prompt Manager ---
-    prompt_manager: Optional[Any] = None
+    # --- Together API ---
+    TOGETHER_API_KEY: Optional[str] = None
+    TOGETHER_MODEL_NAME: Optional[str] = "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"
     
     class Config:
         env_prefix = ""  # No prefix for environment variables
         env_file = ".env"  # Read from .env file if it exists
         extra = "ignore"  # Ignore extra attributes like together_api
         
-    def setup(self):
-        """Create necessary directories and initialize dynamic paths."""
-        # Set dynamic paths that depend on ARTIFACTS_DIR
-        self.FAISS_INDEX_PATH = os.path.join(self.ARTIFACTS_DIR, "my_faiss_index.index")
-        self.GRAPH_PATH = os.path.join(self.ARTIFACTS_DIR, "my_knowledge_graph.gml")
-        self.DOC_STORE_PATH = os.path.join(self.ARTIFACTS_DIR, "doc_store.json")
-            
-        # Create directories
-        os.makedirs(self.ARTIFACTS_DIR, exist_ok=True)
-        os.makedirs(self.CRAWLED_DATA_DIR, exist_ok=True)
-        os.makedirs(self.PROCESSED_DATA_DIR, exist_ok=True)
-        os.makedirs(self.PROMPT_DIR, exist_ok=True)
-        
-        # Initialize prompt manager
-        self.prompt_manager = PromptManager(self.PROMPT_DIR)
-        
         
 settings = Settings()
-settings.setup()
+prompt_manager = PromptManager("prompt")
 
 # For debugging purposes only
 if __name__ == "__main__":
-    print(settings.prompt_manager.sys_prompt_reasoning_agent)
-    print("Settings successfully loaded!") 
+    print(settings.TOGETHER_MODEL_NAME)
+    print(settings.TOGETHER_API_KEY)
+    print(settings.FAISS_INDEX_PATH)
+    print(prompt_manager.sys_prompt_reasoning_agent)
+    

@@ -1,11 +1,12 @@
-# llm_utils.py
-
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from sentence_transformers import SentenceTransformer
-import config # Import cấu hình chung
+from config import settings, prompt_manager
+from together import Together
+import os
+from together_api_model import get_together_response
 
-# --- Khởi tạo Model một lần và tái sử dụng ---
+# Initialize models once and reuse
 _llm_tokenizer = None
 _llm_model = None
 _embedding_model = None
@@ -13,41 +14,40 @@ _embedding_model = None
 def get_llm_tokenizer():
     global _llm_tokenizer
     if _llm_tokenizer is None:
-        print(f"LLM_UTILS: Loading LLM tokenizer: {config.LLM_MODEL_NAME}")
-        _llm_tokenizer = AutoTokenizer.from_pretrained(config.LLM_MODEL_NAME, trust_remote_code=True)
+        print(f"LLM_UTILS: Loading LLM tokenizer: {settings.LLM_MODEL_NAME}")
+        _llm_tokenizer = AutoTokenizer.from_pretrained(settings.LLM_MODEL_NAME, trust_remote_code=True)
     return _llm_tokenizer
 
 def get_llm_model():
     global _llm_model
     if _llm_model is None:
-        print(f"LLM_UTILS: Loading LLM model: {config.LLM_MODEL_NAME} onto {config.DEVICE}")
-        tokenizer = get_llm_tokenizer() # Đảm bảo tokenizer đã được tải
-        if config.DEVICE == "cuda":
+        print(f"LLM_UTILS: Loading LLM model: {settings.LLM_MODEL_NAME} onto {settings.DEVICE}")
+        tokenizer = get_llm_tokenizer()
+        if settings.DEVICE == "cuda":
             _llm_model = AutoModelForCausalLM.from_pretrained(
-                config.LLM_MODEL_NAME,
+                settings.LLM_MODEL_NAME,
                 torch_dtype="auto",
                 device_map="auto",
                 trust_remote_code=True
             )
         else:
             _llm_model = AutoModelForCausalLM.from_pretrained(
-                config.LLM_MODEL_NAME,
+                settings.LLM_MODEL_NAME,
                 torch_dtype=torch.float32,
                 trust_remote_code=True
-            ).to(config.DEVICE)
+            ).to(settings.DEVICE)
     return _llm_model
 
 def get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
-        print(f"LLM_UTILS: Loading embedding model: {config.EMBEDDING_MODEL_NAME} onto {config.DEVICE}")
-        _embedding_model = SentenceTransformer(config.EMBEDDING_MODEL_NAME, device=config.DEVICE)
+        print(f"LLM_UTILS: Loading embedding model: {settings.EMBEDDING_MODEL_NAME} onto {settings.DEVICE}")
+        _embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL_NAME, device=settings.DEVICE)
     return _embedding_model
 
-# --- Helper Functions ---
-def get_llm_response(prompt_text, max_new_tokens=250, system_message="You are a helpful assistant.", stop_sequences=None):
+def get_hf_llm_response(prompt_text, max_new_tokens=250, system_message="You are a helpful assistant.", stop_sequences=None):
     """
-    Gửi prompt đến LLM và nhận phản hồi.
+    Send prompt to LLM and get response.
     """
     tokenizer = get_llm_tokenizer()
     model = get_llm_model()
@@ -55,42 +55,22 @@ def get_llm_response(prompt_text, max_new_tokens=250, system_message="You are a 
     messages = [{"role": "system", "content": system_message},
                 {"role": "user", "content": prompt_text}]
     text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    model_inputs = tokenizer([text], return_tensors="pt").to(config.DEVICE)
+    model_inputs = tokenizer([text], return_tensors="pt").to(settings.DEVICE)
 
-    # Xử lý stop_sequences (nếu cần thiết và phức tạp hơn, có thể tạo custom StoppingCriteria)
-    # Ví dụ đơn giản về stop_sequences (có thể không hoạt động hoàn hảo với mọi model/tokenizer)
-    stopping_criteria = []
-    # if stop_sequences:
-    #     from transformers import StoppingCriteria, StoppingCriteriaList
-    #     class StopOnTokens(StoppingCriteria):
-    #         def __init__(self, stop_token_ids):
-    #             super().__init__()
-    #             self.stop_token_ids = stop_token_ids
-    #         def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
-    #             for stop_ids in self.stop_token_ids:
-    #                 if torch.equal(input_ids[0][-len(stop_ids):], stop_ids.to(input_ids.device)):
-    #                     return True
-    #             return False
-    #     stop_token_ids_list = [tokenizer.encode(s, add_special_tokens=False, return_tensors="pt")[0] for s in stop_sequences]
-    #     stopping_criteria.append(StopOnTokens(stop_token_ids_list))
-    
-    # Sử dụng pad_token_id là eos_token_id nếu có, nếu không thì là pad_token_id của tokenizer
     pad_token_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else tokenizer.pad_token_id
-    if pad_token_id is None and hasattr(tokenizer, 'pad_token_id_from_model_config'): # Một số model mới có thể cần cách này
-         pad_token_id = tokenizer.pad_token_id_from_model_config
+    if pad_token_id is None and hasattr(tokenizer, 'pad_token_id_from_model_settings'): 
+         pad_token_id = tokenizer.pad_token_id_from_model_settings
 
     generated_ids = model.generate(
         model_inputs.input_ids,
         max_new_tokens=max_new_tokens,
-        pad_token_id=pad_token_id, # Quan trọng
-        # stopping_criteria=StoppingCriteriaList(stopping_criteria) if stopping_criteria else None
+        pad_token_id=pad_token_id,
     )
     generated_ids = [
         output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
     ]
     response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
-    # Xử lý stop_sequences thủ công nếu generate không hỗ trợ tốt
     if stop_sequences:
         for seq in stop_sequences:
             if seq in response:
@@ -98,18 +78,30 @@ def get_llm_response(prompt_text, max_new_tokens=250, system_message="You are a 
                 break
     return response.strip()
 
+def get_llm_response(prompt_text, max_new_tokens=250, system_message="You are a helpful assistant.", stop_sequences=None):
+    """
+    Send prompt to LLM and get response.
+    If TOGETHER_API_KEY exists in settings, use Together API.
+    Otherwise, use local model.
+    """
+    try:
+        if hasattr(settings, 'TOGETHER_API_KEY') and settings.TOGETHER_API_KEY:
+            return get_together_response(prompt_text, system_message, max_new_tokens)
+        else:
+            return get_hf_llm_response(prompt_text, max_new_tokens, system_message, stop_sequences)
+    except (ImportError, AttributeError):
+        return get_hf_llm_response(prompt_text, max_new_tokens, system_message, stop_sequences)
 
 def get_embeddings(texts):
     """
-    Tạo vector embedding cho danh sách các đoạn văn bản.
+    Create embedding vectors for a list of text passages.
     """
     model = get_embedding_model()
-    # Xử lý batching nếu danh sách texts quá lớn để tránh OOM
     batch_size = 32
     all_embeddings = []
     for i in range(0, len(texts), batch_size):
         batch_texts = texts[i:i+batch_size]
-        batch_embeddings = model.encode(batch_texts, convert_to_tensor=True, device=config.DEVICE)
+        batch_embeddings = model.encode(batch_texts, convert_to_tensor=True, device=settings.DEVICE)
         all_embeddings.append(batch_embeddings)
     
     if len(all_embeddings) == 1:
@@ -117,30 +109,27 @@ def get_embeddings(texts):
     else:
         return torch.cat(all_embeddings, dim=0)
 
-# Thêm các hàm tiện ích liên quan đến LLM khác nếu cần
 def calculate_token_probabilities(prompt_text, next_tokens=5):
     """
-    Tính xác suất của các token tiếp theo dựa trên prompt đã cho.
+    Calculate probabilities of next tokens based on the given prompt.
     
     Args:
-        prompt_text: Đoạn văn bản đầu vào
-        next_tokens: Số lượng token có xác suất cao nhất muốn lấy
+        prompt_text: Input text
+        next_tokens: Number of highest probability tokens to retrieve
         
     Returns:
-        Danh sách các tuple (token, xác suất)
+        List of tuples (token, probability)
     """
     tokenizer = get_llm_tokenizer()
     model = get_llm_model()
     
-    inputs = tokenizer(prompt_text, return_tensors="pt").to(config.DEVICE)
+    inputs = tokenizer(prompt_text, return_tensors="pt").to(settings.DEVICE)
     with torch.no_grad():
         outputs = model(**inputs)
         
-    # Lấy logits cho token cuối cùng
     logits = outputs.logits[0, -1, :]
     probabilities = torch.nn.functional.softmax(logits, dim=0)
     
-    # Lấy top-k tokens có xác suất cao nhất
     topk_probs, topk_indices = torch.topk(probabilities, next_tokens)
     
     results = []
@@ -152,23 +141,22 @@ def calculate_token_probabilities(prompt_text, next_tokens=5):
 
 def check_context_length(text, model_name=None):
     """
-    Kiểm tra độ dài context của văn bản so với giới hạn của model.
+    Check the context length of text against the model limit.
     
     Args:
-        text: Văn bản cần kiểm tra
-        model_name: Tên model để xác định giới hạn (nếu None, sẽ dùng model mặc định)
+        text: Text to check
+        model_name: Model name to determine the limit (if None, will use default model)
         
     Returns:
-        tuple: (số tokens, giới hạn của model, có vượt quá không)
+        tuple: (token count, model limit, exceeds limit)
     """
     if model_name is None:
-        model_name = config.LLM_MODEL_NAME
+        model_name = settings.LLM_MODEL_NAME
         
     tokenizer = get_llm_tokenizer()
     tokens = tokenizer.encode(text)
     token_count = len(tokens)
     
-    # Xác định giới hạn của model
     model_limits = {
         "gpt-3.5-turbo": 4096,
         "gpt-4": 8192,
@@ -180,21 +168,21 @@ def check_context_length(text, model_name=None):
         "mistral-8x7b": 32768,
     }
     
-    limit = model_limits.get(model_name.lower(), 2048)  # Mặc định là 2048 nếu không biết model
+    limit = model_limits.get(model_name.lower(), 2048)
     
     return token_count, limit, token_count > limit
 
 def truncate_to_max_tokens(text, max_tokens=None, truncation_method="end"):
     """
-    Cắt bớt văn bản để đảm bảo không vượt quá số token tối đa.
+    Truncate text to ensure it doesn't exceed maximum token count.
     
     Args:
-        text: Văn bản cần cắt
-        max_tokens: Số token tối đa (mặc định lấy theo giới hạn của model)
-        truncation_method: Phương pháp cắt ("start", "end", hoặc "middle")
+        text: Text to truncate
+        max_tokens: Maximum number of tokens (default uses model limit)
+        truncation_method: Truncation method ("start", "end", or "middle")
         
     Returns:
-        Văn bản đã được cắt bớt
+        Truncated text
     """
     tokenizer = get_llm_tokenizer()
     tokens = tokenizer.encode(text)
@@ -206,31 +194,28 @@ def truncate_to_max_tokens(text, max_tokens=None, truncation_method="end"):
         return text
     
     if truncation_method == "end":
-        # Giữ phần đầu, cắt phần cuối
         truncated_tokens = tokens[:max_tokens]
     elif truncation_method == "start":
-        # Giữ phần cuối, cắt phần đầu
         truncated_tokens = tokens[-max_tokens:]
     elif truncation_method == "middle":
-        # Giữ đầu và cuối, cắt phần giữa
         half = max_tokens // 2
         truncated_tokens = tokens[:half] + tokens[-half:]
     else:
-        raise ValueError(f"Phương pháp cắt không hợp lệ: {truncation_method}")
+        raise ValueError(f"Invalid truncation method: {truncation_method}")
     
     return tokenizer.decode(truncated_tokens)
 
 def chunk_text(text, max_chunk_size=1024, overlap=100):
     """
-    Chia văn bản thành các đoạn nhỏ hơn với độ chồng lấn.
+    Split text into smaller chunks with overlap.
     
     Args:
-        text: Văn bản cần chia
-        max_chunk_size: Kích thước tối đa của mỗi đoạn (tính bằng token)
-        overlap: Số token chồng lấn giữa các đoạn
+        text: Text to split
+        max_chunk_size: Maximum size of each chunk (in tokens)
+        overlap: Number of overlapping tokens between chunks
         
     Returns:
-        Danh sách các đoạn văn bản
+        List of text chunks
     """
     tokenizer = get_llm_tokenizer()
     tokens = tokenizer.encode(text)
@@ -248,3 +233,7 @@ def chunk_text(text, max_chunk_size=1024, overlap=100):
             break
     
     return chunks
+
+if __name__ == "__main__":
+    print(get_llm_response(prompt_text="Cho tôi biết về đại học quốc gia hà nội ?", system_message=prompt_manager.sys_prompt_reasoning_agent, max_new_tokens=250)) 
+    

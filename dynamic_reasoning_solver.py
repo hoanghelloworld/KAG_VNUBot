@@ -422,7 +422,7 @@ class DynamicKAGSolver:
             # # Sau đó, có thể tạo prompt mới chỉ để lấy Action, hoặc parse cả hai từ một response
             
             # Cách tiếp cận đơn giản hơn: lấy cả thought và action trong 1 lần gọi
-            llm_full_output = llm_utils.get_llm_response(current_prompt, max_new_tokens=300, system_message="You are a reasoning agent following instructions precisely.")
+            llm_full_output = llm_utils.get_llm_response(current_prompt, max_new_tokens=300, system_message=config.settings.prompt_manager.sys_prompt_reasoning_agent)
             print(f"LLM Full Output (Thought & Action):\n{llm_full_output}")
 
             thought, action_type, action_input = self._parse_llm_action_output(llm_full_output)
@@ -488,7 +488,7 @@ class DynamicKAGSolver:
 
         Final Answer (make it concise but complete):
         """
-        final_answer = llm_utils.get_llm_response(final_synthesis_prompt, max_new_tokens=500, system_message="You are an expert educational policy analyst specializing in university regulations and academic procedures at VNU. Your task is to synthesize information accurately and comprehensively.")
+        final_answer = llm_utils.get_llm_response(final_synthesis_prompt, max_new_tokens=500, system_message=config.settings.prompt_manager.sys_prompt_educational_analyst)
         return final_answer
 
 if __name__ == "__main__":

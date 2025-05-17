@@ -6,7 +6,7 @@ import os
 from langchain.text_splitter import RecursiveCharacterTextSplitter # Hoặc text splitter tự viết
 
 import config
-import llm_utils # Sử dụng hàm get_llm_response, get_embeddings
+import llm_utils 
 
 class AdvancedKAGBuilder:
     def __init__(self, chunk_size=config.CHUNK_SIZE, chunk_overlap=config.CHUNK_OVERLAP):
@@ -58,7 +58,7 @@ class AdvancedKAGBuilder:
 
         Entities (JSON list):
         """
-        response_str = llm_utils.get_llm_response(prompt, max_new_tokens=500, system_message="You are an expert entity extraction system.")
+        response_str = llm_utils.get_llm_response(prompt, max_new_tokens=500, system_message=config.settings.prompt_manager.sys_prompt_entity_extractor)
         try:
             entities = json.loads(response_str)
             if not isinstance(entities, list): # Đảm bảo là list
@@ -139,7 +139,7 @@ class AdvancedKAGBuilder:
 
         Relationships (JSON list of triples):
         """
-        response_str = llm_utils.get_llm_response(prompt, max_new_tokens=500, system_message="You are an expert relation extraction system.")
+        response_str = llm_utils.get_llm_response(prompt, max_new_tokens=500, system_message=config.settings.prompt_manager.sys_prompt_relation_extractor)
         try:
             relations = json.loads(response_str)
             if not isinstance(relations, list):

@@ -5,20 +5,20 @@ import json
 import os
 import re
 
-import config
+from config import settings, prompt_manager
 import llm_utils # Sử dụng get_llm_response
 
 class DynamicKAGSolver:
-    def __init__(self, top_k_retrieval=config.TOP_K_RETRIEVAL, max_reasoning_steps=config.MAX_REASONING_STEPS):
+    def __init__(self, top_k_retrieval=settings.TOP_K_RETRIEVAL, max_reasoning_steps=settings.MAX_REASONING_STEPS):
         # --- Tải Artifacts ---
         print("SOLVER: Loading FAISS index...")
-        self.faiss_index = faiss.read_index(config.FAISS_INDEX_PATH)
+        self.faiss_index = faiss.read_index(settings.FAISS_INDEX_PATH)
         
         print("SOLVER: Loading Knowledge Graph...")
-        self.graph = nx.read_gml(config.GRAPH_PATH)
+        self.graph = nx.read_gml(settings.GRAPH_PATH)
         
         print("SOLVER: Loading Doc Store and FAISS ID Map...")
-        with open(config.DOC_STORE_PATH, 'r', encoding='utf-8') as f:
+        with open(settings.DOC_STORE_PATH, 'r', encoding='utf-8') as f:
             saved_data = json.load(f)
             self.doc_store = saved_data['doc_store']
             # faiss_id_map từ string (do JSON) sang int
@@ -434,7 +434,7 @@ class DynamicKAGSolver:
             # # Sau đó, có thể tạo prompt mới chỉ để lấy Action, hoặc parse cả hai từ một response
             
             # Cách tiếp cận đơn giản hơn: lấy cả thought và action trong 1 lần gọi
-            llm_full_output = llm_utils.get_llm_response(current_prompt, max_new_tokens=300, system_message=config.prompt_manager.sys_prompt_reasoning_agent)
+            llm_full_output = llm_utils.get_llm_response(current_prompt, max_new_tokens=1500, system_message=prompt_manager.sys_prompt_reasoning_agent)
             print(f"LLM Full Output (Thought & Action):\n{llm_full_output}")
 
             thought, action_type, action_input = self._parse_llm_action_output(llm_full_output)
@@ -520,15 +520,15 @@ class DynamicKAGSolver:
 
         **Câu trả lời cuối cùng của bạn (Final Answer - hãy trình bày một cách mạch lạc và đầy đủ):**
         """
-        final_answer = llm_utils.get_llm_response(final_synthesis_prompt, max_new_tokens=500, system_message=config.prompt_manager.sys_prompt_educational_analyst)
+        final_answer = llm_utils.get_llm_response(final_synthesis_prompt, max_new_tokens=1500, system_message=prompt_manager.sys_prompt_educational_analyst)
         return final_answer
 
 if __name__ == "__main__":
     # TODO:  Chạy file này sau khi Người 2 đã tạo artifacts (FAISS, GML, DocStore).
-    #       Đảm bảo llm_utils.py và config.py đã sẵn sàng.
+    #       Đảm bảo llm_utils.py và settings.py đã sẵn sàng.
     
     # Kiểm tra sự tồn tại của artifacts
-    required_files = [config.FAISS_INDEX_PATH, config.GRAPH_PATH, config.DOC_STORE_PATH]
+    required_files = [settings.FAISS_INDEX_PATH, settings.GRAPH_PATH, settings.DOC_STORE_PATH]
     missing_files = [f for f in required_files if not os.path.exists(f)]
     if missing_files:
         print(f"Solver cannot start. Missing artifact files: {', '.join(missing_files)}")
@@ -543,7 +543,7 @@ if __name__ == "__main__":
         # answer1 = solver.solve(query1)
         # print(f"\n--- FINAL ANSWER (Query 1) ---\n{answer1}")
 
-        query2 = """QUYẾT ĐỊNH VỀ VIỆC BAN HÀNH QUY CHẾ ĐÀO TẠO TIẾN SĨ TẠI ĐẠI HỌC QUỐC GIA HÀ NỘI được ban hành vào ngày tháng năm nào?"""
+        query2 = """Các trường đại học trực thuộc Đại học quốc gia hà Nội"""
         print(f"\nSolving Query 2: {query2}")
         answer2 = solver.solve(query2)
         print(f"\n--- FINAL ANSWER (Query 2) ---\n{answer2}")

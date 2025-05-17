@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     # --- Model Configuration ---
     DEVICE: str = "cuda" if torch.cuda.is_available() else "cpu"
     LLM_MODEL_NAME: str = "Qwen/Qwen1.5-1.8B-Chat"
-    EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
+    EMBEDDING_MODEL_NAME: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" 
     
     # --- Artifact Storage Paths ---
     FAISS_INDEX_PATH: str = os.path.join(ARTIFACTS_DIR, "my_faiss_index.index")
@@ -61,7 +61,8 @@ class Settings(BaseSettings):
     DOC_STORE_PATH: str = os.path.join(ARTIFACTS_DIR, "doc_store.json")
     
     # --- KAGBuilder Configuration ---
-    CHUNK_SIZE: int = 300
+    # CHUNK_SIZE: int = 300
+    CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 30
     
     # --- KAGSolver Configuration ---
@@ -71,15 +72,17 @@ class Settings(BaseSettings):
     # --- Together API ---
     TOGETHER_API_KEY: Optional[str] = None
     TOGETHER_MODEL_NAME: Optional[str] = "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"
+    # TOGETHER_MODEL_NAME: Optional[str] = "deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free"
+    
     
     class Config:
         env_prefix = ""  # No prefix for environment variables
         env_file = ".env"  # Read from .env file if it exists
         extra = "ignore"  # Ignore extra attributes like together_api
-        
-        
+    
+
 settings = Settings()
-prompt_manager = PromptManager("prompt")
+prompt_manager = PromptManager(settings.PROMPT_DIR)
 
 # For debugging purposes only
 if __name__ == "__main__":

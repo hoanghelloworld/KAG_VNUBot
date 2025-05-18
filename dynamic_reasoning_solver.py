@@ -43,10 +43,34 @@ Bạn có quyền truy cập vào các công cụ sau:
    - `find_subject`: Cho mối quan hệ (relation) và đối tượng (object), tìm (các) chủ thể. (ví dụ: query_kg("?", "đặt tại", "Hà Nội", query_type="find_subject"))
    - `get_entity_details`: Cho một thực thể, lấy các thuộc tính và mối quan hệ trực tiếp của nó. (ví dụ: query_kg("Học phí", "?", "?", query_type="get_entity_details"))
    - `find_mentioning_chunks`: Cho một thực thể, tìm các đoạn văn bản đề cập đến nó. (ví dụ: query_kg("AI", "mentioned_in_chunk", "?", query_type="find_mentioning_chunks"))
-   - `find_entity_by_type`: Cho một loại thực thể, liệt kê các thực thể thuộc loại đó. (ví dụ: query_kg("HỌC PHẦN", "entity_type", "?", query_type="find_entity_by_type"))
+   - `find_entity_by_type`: Cho một loại thực thể, liệt kê các thực thể thuộc loại đó. (ví dụ: query_kg("COURSE", "entity_type", "?", query_type="find_entity_by_type") hoặc query_kg(subject="?", relation="entity_type", object="COURSE", query_type="find_subject"))
    - `list_entities`: Liệt kê một mẫu các thực thể trong KG. (ví dụ: query_kg("?", "?", "?", query_type="list_entities"))
    Sử dụng '?' cho các phần chưa biết trong subject, relation, hoặc object cho các loại truy vấn phù hợp.
 3. `finish(answer: str)`: Cung cấp câu trả lời cuối cùng cho Câu hỏi gốc. Chỉ sử dụng công cụ này khi bạn tự tin rằng mình đã có câu trả lời đầy đủ và chính xác.
+
+4. Lưu ý về Knowledge Graph:
+   - KG được xây dựng từ các văn bản quy chế và tài liệu giáo dục.
+   - Các loại thực thể (ENTITY TYPES) thường gặp bao gồm:
+     - PROGRAM: Các chương trình giáo dục (ví dụ: "Chương trình đào tạo tiên tiến").
+     - COURSE: Tên môn học hoặc mã môn học (ví dụ: "Giải tích I").
+     - REGULATION: Tên các quy định, quy chế, chính sách (ví dụ: "Quy chế đào tạo đại học").
+     - DOCUMENT: Các định danh tài liệu (ví dụ: "Quyết định số 123/QĐ-ĐHQGHN").
+     - REQUIREMENT: Các yêu cầu, chuẩn mực (ví dụ: "Chuẩn đầu ra tiếng Anh").
+     - ACADEMIC_UNIT: Khoa, phòng, ban, viện, đơn vị học thuật (ví dụ: "Khoa Công nghệ Thông tin", "Đại học Quốc gia Hà Nội").
+     - ROLE: Chức danh hoặc vai trò (ví dụ: "Hiệu trưởng", "Sinh viên").
+     - CREDIT: Thông tin tín chỉ.
+     - EVALUATION: Phương pháp đánh giá.
+     - FEE: Học phí, lệ phí.
+     - DEADLINE: Mốc thời gian, hạn chót.
+   - Các loại mối quan hệ (RELATION TYPES) mô tả thường gặp bao gồm:
+     - "thuộc_về": Thực thể là một phần của thực thể khác (ví dụ: COURSE "Giải tích I" thuộc_về PROGRAM "Chương trình Tiên tiến").
+     - "yêu_cầu": Thực thể này yêu cầu thực thể kia (ví dụ: COURSE "Giải tích II" yêu_cầu COURSE "Giải tích I").
+     - "được_quản_lý_bởi": Ví dụ: ACADEMIC_UNIT "Khoa CNTT" được_quản_lý_bởi ACADEMIC_UNIT "Trường ĐH Công nghệ".
+     - "được_định_nghĩa_trong": Ví dụ: REQUIREMENT "Chuẩn đầu ra tiếng Anh" được_định_nghĩa_trong REGULATION "Quy chế đào tạo".
+     - "bao_gồm_thành_phần": Ví dụ: PROGRAM "Cử nhân CNTT" bao_gồm_thành_phần COURSE "Lập trình cơ bản".
+     - "áp_dụng_cho": Ví dụ: REGULATION "Quy chế học bổng" áp_dụng_cho ROLE "Sinh viên".
+     - "có_liên_quan_đến": Mối liên hệ chung.
+     - Và các mối quan hệ khác như: "được_đánh_giá_bằng", "tương_đương_với", "kế_thừa_bởi", "được_tạo_bởi", "được_sửa_đổi_bởi".
 
 Quy trình Lý luận:
 1. Hiểu Câu hỏi gốc và chia nhỏ nếu phức tạp.
@@ -97,10 +121,6 @@ Thought:
     def _query_kg_advanced(self, subject_str, relation_str, object_str, query_type_str):
         """
         Thực hiện truy vấn trên Knowledge Graph.
-        TODO: (Người 3) Implement logic truy vấn KG chi tiết hơn.
-              - Xử lý các `query_type` khác nhau.
-              - Chuẩn hóa input entity/relation (ví dụ: lowercase).
-              - Tìm kiếm các node và cạnh trong `self.graph`.
         """
         print(f"  SOLVER Action: query_kg(\"{subject_str}\", \"{relation_str}\", \"{object_str}\", query_type=\"{query_type_str}\")")
         

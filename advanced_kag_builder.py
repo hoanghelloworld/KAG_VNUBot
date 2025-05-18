@@ -22,7 +22,10 @@ class AdvancedKAGBuilder:
         self.faiss_id_to_chunk_id = {}
         
         if settings.CONTINUE_BUILDING_KAG:
+            print("KAG BUILDER: Continue building KAG from existed artifacts...")
             self.load_existed_artifacts()
+            print(f"KAG BUILDER: {len(self.doc_store)} chunks loaded.")
+            print("KAG BUILDER: All artifacts loaded.")
         
     def load_existed_artifacts(self):
         print("SOLVER: Loading FAISS index...")
@@ -31,12 +34,27 @@ class AdvancedKAGBuilder:
         print("SOLVER: Loading Knowledge Graph...")
         self.graph = nx.read_gml(settings.GRAPH_PATH)
         
+        # Convert 'original_text_forms' back to set after loading
+        for node_id, attrs in self.graph.nodes(data=True):
+            if 'original_text_forms' in attrs and isinstance(attrs['original_text_forms'], str):
+                attrs['original_text_forms'] = set(attrs['original_text_forms'].split('|'))
+            # Ensure 'original_text_forms' exists as a set even if it was empty or not present in GML for some reason
+            # or if it was an empty string from GML, which split('|') would result in {' '}
+            elif 'original_text_forms' in attrs and attrs['original_text_forms'] == {''}: # handles case of empty string becoming {''}
+                 attrs['original_text_forms'] = set()
+            # If the node is an entity type but somehow misses 'original_text_forms', initialize it.
+            # This is more of a safeguard.
+            elif attrs.get('type') == 'entity' and 'original_text_forms' not in attrs:
+                attrs['original_text_forms'] = set()
+
         print("SOLVER: Loading Doc Store and FAISS ID Map...")
         with open(settings.DOC_STORE_PATH, 'r', encoding='utf-8') as f:
             saved_data = json.load(f)
             self.doc_store = saved_data['doc_store']
             self.faiss_id_to_chunk_id = {int(k): v for k, v in saved_data['faiss_id_map'].items()}
         print("SOLVER: All artifacts loaded.")
+        
+    
 
     def _extract_entities_advanced(self, text_chunk, source_id_for_prompt=""):
         prompt = f"""
@@ -256,6 +274,12 @@ class AdvancedKAGBuilder:
             pbar = tqdm(total=len(chunks), desc=f"KAG Builder: documents {index}/{len(processed_data_list)}")
             for i, chunk_text in enumerate(chunks):
                 current_chunk_id = f"{source_id}_chunk_{i}"
+                
+                # continue building KAG from existed artifacts
+                if current_chunk_id in self.doc_store:
+                    pbar.update(1)
+                    continue
+                
                 self.doc_store[current_chunk_id] = chunk_text # Store original text of the chunk
                 all_chunks_for_embedding.append({"id": current_chunk_id, "text": chunk_text})
 

@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     # TOGETHER_MODEL_NAME: Optional[str] = "deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free"
     
     # --- Continue building KAG ---
-    CONTINUE_BUILDING_KAG: bool = False
+    CONTINUE_BUILDING_KAG: bool = True
     
     
     class Config:

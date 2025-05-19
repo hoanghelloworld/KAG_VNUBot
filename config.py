@@ -13,9 +13,11 @@ PROCESSED_DATA_DIR = os.path.join(BASE_DIR, "data_processed")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # TODO: Cho phép người dùng chọn model LLM và Embedding từ đây hoặc qua biến môi trường
 # Ví dụ: LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "Qwen/Qwen1.5-1.8B-Chat")
-LLM_MODEL_NAME = "Qwen/Qwen1.5-1.8B-Chat"
+# LLM_MODEL_NAME = "Qwen/Qwen1.5-1.8B-Chat"
+# EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+LLM_MODEL_NAME = "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free" # Hoặc model API bạn muốn dùng
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-
+TOGETHER_API_KEY = "5"
 # --- Đường dẫn Lưu trữ Artifacts ---
 FAISS_INDEX_PATH = os.path.join(ARTIFACTS_DIR, "my_faiss_index.index")
 GRAPH_PATH = os.path.join(ARTIFACTS_DIR, "my_knowledge_graph.gml")
@@ -26,7 +28,7 @@ CHUNK_SIZE = 300
 CHUNK_OVERLAP = 30
 
 # --- Cấu hình KAGSolver ---
-TOP_K_RETRIEVAL = 2
+TOP_K_RETRIEVAL = 3
 MAX_REASONING_STEPS = 4
 
 # --- Cấu hình Crawler ---

@@ -1,4 +1,4 @@
-\
+
 <!-- filepath: /workspaces/KAG_VNUBot/README.md -->
 # KAG_VNUBot: Chatbot Tra Cứu Thông Tin Quy Chế Đại Học Quốc Gia Hà Nội
 

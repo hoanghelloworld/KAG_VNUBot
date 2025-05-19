@@ -444,11 +444,15 @@ Thought:
         return thought, "error", f"Unknown or malformed action: {action_call_str}"
 
 
-    def solve(self, original_query):
+    def solve(self, original_query, top_k_retrieval=None, max_reasoning_steps=None):
+        # Use provided values or fall back to instance variables
+        top_k = top_k_retrieval if top_k_retrieval is not None else self.top_k
+        max_steps = max_reasoning_steps if max_reasoning_steps is not None else self.max_reasoning_steps
+        
         scratchpad = f"Task: Answer the Original Query.\n" # Bắt đầu scratchpad
         
-        for step in range(self.max_reasoning_steps):
-            print(f"\n--- SOLVER: Reasoning Step {step + 1}/{self.max_reasoning_steps} ---")
+        for step in range(max_steps):
+            print(f"\n--- SOLVER: Reasoning Step {step + 1}/{max_steps} ---")
             
             prompt_input = {
                 "original_query": original_query,
@@ -464,7 +468,7 @@ Thought:
             # # Sau đó, có thể tạo prompt mới chỉ để lấy Action, hoặc parse cả hai từ một response
             
             # Cách tiếp cận đơn giản hơn: lấy cả thought và action trong 1 lần gọi
-            llm_full_output = llm_utils.get_llm_response(current_prompt, max_new_tokens=3000, system_message="You are a reasoning agent following instructions precisely.")
+            llm_full_output = llm_utils.get_llm_response(current_prompt, max_new_tokens=4500, system_message="You are a reasoning agent following instructions precisely.")
             print(f"LLM Full Output (Thought & Action):\n{llm_full_output}")
 
             thought, action_type, action_input = self._parse_llm_action_output(llm_full_output)

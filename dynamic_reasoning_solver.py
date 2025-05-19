@@ -71,10 +71,16 @@ Bạn có quyền truy cập vào các công cụ sau:
      - "áp_dụng_cho": Ví dụ: REGULATION "Quy chế học bổng" áp_dụng_cho ROLE "Sinh viên".
      - "có_liên_quan_đến": Mối liên hệ chung.
      - Và các mối quan hệ khác như: "được_đánh_giá_bằng", "tương_đương_với", "kế_thừa_bởi", "được_tạo_bởi", "được_sửa_đổi_bởi".
+   
+   - QUAN TRỌNG: KHÔNG TỰ TẠO RA các mối quan hệ mới khi sử dụng query_kg. Chỉ sử dụng các mối quan hệ đã liệt kê ở trên hoặc những mối quan hệ đã được xác nhận tồn tại trong KG.
+   - Khi không chắc chắn về mối quan hệ chính xác, trước tiên hãy sử dụng query_type="get_entity_details" để tìm hiểu các mối quan hệ hiện có của thực thể đó.
+   - Nếu không tìm thấy mối quan hệ cụ thể trong KG, hãy sử dụng search_vector_db để tìm kiếm thông tin trong văn bản.
 
 Quy trình Lý luận:
 1. Hiểu Câu hỏi gốc và chia nhỏ nếu phức tạp.
 2. Sử dụng các công cụ để thu thập thông tin từng bước. Thêm các quan sát vào scratchpad của bạn.
+   - Khi cần tìm kiếm thông tin về một thực thể trong KG, đầu tiên hãy sử dụng query_kg với query_type="get_entity_details" để xem thực thể đó có tồn tại và có những mối quan hệ nào.
+   - Chỉ sử dụng những mối quan hệ đã được xác nhận tồn tại, tránh tự tạo ra các mối quan hệ không có trong hệ thống.
 3. Phân tích thông tin để xác định những điểm còn thiếu hoặc mâu thuẫn.
 4. Tiếp tục thu thập thông tin cho đến khi bạn có đủ để trả lời hoàn chỉnh.
 5. Cung cấp một câu trả lời toàn diện bằng `finish()` khi sẵn sàng.
@@ -210,25 +216,31 @@ Thought:
                             # Với self.graph.pred[obj], các cạnh đã đúng hướng (pred_id -> obj)
                             results.append(f"Found subject: '{pred_id}' related to '{obj}' via '{rel}' from chunk '{edge_data.get('source_chunk_id','N/A')}'")
  
-        elif q_type == "get_attributes":
-            # Ví dụ: query_kg("John McCarthy", "?", "?", query_type="get_attributes")
+        elif q_type == "get_entity_details":
+            # Ví dụ: query_kg("John McCarthy", "?", "?", query_type="get_entity_details")
             # Lấy thuộc tính của một thực thể
-            if subj != "?" and self.graph.has_node(subj):
-                node_attrs = self.graph.nodes[subj]
-                # Lọc ra các thuộc tính người dùng định nghĩa, không phải của networkx
-                custom_attrs = {k:v for k,v in node_attrs.items() if k not in ['type', 'text_preview', 'original_text_forms']}
-                if custom_attrs:
-                    results.append(f"Attributes for '{subj}': {custom_attrs}")
-                
-                # Lấy tất cả các relation của entity này để hiển thị như attributes
-                for neighbor_id, edge_dict in self.graph.adj[subj].items():
-                    for edge_key, edge_data in edge_dict.items():
-                        if edge_data.get('type') == 'kg_relation':
-                            relation = edge_data.get('relation_label', 'related_to')
-                            results.append(f"Relation: '{subj}' --[{relation}]--> '{neighbor_id}'")
-                
-                if not results:
-                    results.append(f"No specific attributes or relations found for '{subj}' in KG.")
+            try:
+                if subj != "?" and self.graph.has_node(subj):
+                    node_attrs = self.graph.nodes[subj]
+                    # Lọc ra các thuộc tính người dùng định nghĩa, không phải của networkx
+                    custom_attrs = {k:v for k,v in node_attrs.items() if k not in ['type', 'text_preview', 'original_text_forms']}
+                    if custom_attrs:
+                        results.append(f"Attributes for '{subj}': {custom_attrs}")
+                    
+                    # Lấy tất cả các relation của entity này để hiển thị như attributes
+                    for neighbor_id, edge_dict in self.graph.adj[subj].items():
+                        for edge_key, edge_data in edge_dict.items():
+                            print(f"edge_dict: {edge_dict}")
+                            print(f"edge_key: {edge_key}")
+                            print(f"edge_data: {edge_data}")
+                            if edge_data.get('type') == 'kg_relation':
+                                relation = edge_data.get('relation_label', 'related_to')
+                                results.append(f"Relation: '{subj}' --[{relation}]--> '{neighbor_id}'")
+                    
+                    if not results:
+                        results.append(f"No specific attributes or relations found for '{subj}' in KG.")
+            except Exception as e: 
+                return f"Observation: Error querying KG for entity '{subj}': {str(e)}"
                     
         elif q_type == "find_entity_by_type":
             # Ví dụ: query_kg("person", "entity_type", "?", query_type="find_entity_by_type")
@@ -541,7 +553,9 @@ if __name__ == "__main__":
         # answer1 = solver.solve(query1)
         # print(f"\n--- FINAL ANSWER (Query 1) ---\n{answer1}")
 
-        query2 = "Các trường đại học trực thuộc Đại học quốc gia hà Nội năm 2025"
+        # query2 = "Các trường đại học trực thuộc Đại học quốc gia hà Nội năm 2025"
+        query2 = "Số yêu cầu để trở thành tiến sĩ tại Đại học quốc gia Hà Nội"
+        
         print(f"\nSolving Query 2: {query2}")
         answer2 = solver.solve(query2)
         print(f"\n--- FINAL ANSWER (Query 2) ---\n{answer2}")

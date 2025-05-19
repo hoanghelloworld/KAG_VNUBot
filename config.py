@@ -66,8 +66,8 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 30
     
     # --- KAGSolver Configuration ---
-    TOP_K_RETRIEVAL: int = 2
-    MAX_REASONING_STEPS: int = 4
+    TOP_K_RETRIEVAL: int = 5
+    MAX_REASONING_STEPS: int = 6
     
     # --- Together API ---
     TOGETHER_API_KEY: Optional[str] = None

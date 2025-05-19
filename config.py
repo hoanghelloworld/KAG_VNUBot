@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     MAX_REASONING_STEPS: int = 6
     
     # --- Together API ---
-    TOGETHER_API_KEY: Optional[str] = None
+    TOGETHER_API_KEY: Optional[str] = "f484d6edf0233188fe6a8c72ef7f6e48e5ef584f26eff52a045e057f149e48bc"
     TOGETHER_MODEL_NAME: Optional[str] = "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"
     # TOGETHER_MODEL_NAME: Optional[str] = "deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free"
     

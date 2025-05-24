@@ -2,8 +2,8 @@ import networkx as nx
 import faiss
 import json
 import os
-import re # Ensure re is imported
-from langchain.text_splitter import RecursiveCharacterTextSplitter # Or custom text splitter
+import re
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from config import settings, prompt_manager
 import llm_utils 
@@ -18,7 +18,7 @@ class AdvancedKAGBuilder:
             is_separator_regex=False,
         )
         self.graph = nx.Graph()
-        self.doc_store = {}  # chunk_id -> text_chunk
+        self.doc_store = {}
         self.faiss_id_to_chunk_id = {}
         
         if settings.CONTINUE_BUILDING_KAG:
@@ -34,16 +34,11 @@ class AdvancedKAGBuilder:
         print("SOLVER: Loading Knowledge Graph...")
         self.graph = nx.read_gml(settings.GRAPH_PATH)
         
-        # Convert 'original_text_forms' back to set after loading
         for node_id, attrs in self.graph.nodes(data=True):
             if 'original_text_forms' in attrs and isinstance(attrs['original_text_forms'], str):
                 attrs['original_text_forms'] = set(attrs['original_text_forms'].split('|'))
-            # Ensure 'original_text_forms' exists as a set even if it was empty or not present in GML for some reason
-            # or if it was an empty string from GML, which split('|') would result in {' '}
-            elif 'original_text_forms' in attrs and attrs['original_text_forms'] == {''}: # handles case of empty string becoming {''}
+            elif 'original_text_forms' in attrs and attrs['original_text_forms'] == {''}:
                  attrs['original_text_forms'] = set()
-            # If the node is an entity type but somehow misses 'original_text_forms', initialize it.
-            # This is more of a safeguard.
             elif attrs.get('type') == 'entity' and 'original_text_forms' not in attrs:
                 attrs['original_text_forms'] = set()
 
@@ -102,10 +97,9 @@ class AdvancedKAGBuilder:
 
         Entities (JSON list of objects inside <final_json_answer> tags):
         """
-        # Giả sử config.prompt_manager.sys_prompt_entity_extractor tồn tại
         system_message_for_entity = getattr(prompt_manager, 'sys_prompt_entity_extractor', "Bạn là một trợ lý AI chuyên trích xuất thực thể dưới dạng JSON theo yêu cầu.")
 
-        response_str = llm_utils.get_llm_response(prompt, max_new_tokens=3000, system_message=system_message_for_entity) # Tăng max_new_tokens nếu cần
+        response_str = llm_utils.get_llm_response(prompt, max_new_tokens=3000, system_message=system_message_for_entity)
         
         json_to_parse = ""
         try:
@@ -253,7 +247,7 @@ class AdvancedKAGBuilder:
         processed_data_list: list of dicts, e.g., [{"source_id": ..., "text_content": ...}, ...]
         """
         all_chunks_for_embedding = []
-        chunk_id_counter = 0 # This counter is for the print log below, not for unknown source_id
+        chunk_id_counter = 0
 
         if not processed_data_list:
             print("No processed data to build KG from.")
@@ -261,9 +255,8 @@ class AdvancedKAGBuilder:
 
         for index, item in enumerate(processed_data_list):
             text_content = item.get("text_content", "")
-            # Use a unique fallback for source_id if it's missing, based on the item's index
             source_id = item.get("source_id", f"unknown_source_doc_{index}") 
-            original_url = item.get("original_url", "") # Get additional information if available
+            original_url = item.get("original_url", "") 
 
             if not text_content:
                 continue
@@ -280,19 +273,18 @@ class AdvancedKAGBuilder:
                     pbar.update(1)
                     continue
                 
-                self.doc_store[current_chunk_id] = chunk_text # Store original text of the chunk
+                self.doc_store[current_chunk_id] = chunk_text
                 all_chunks_for_embedding.append({"id": current_chunk_id, "text": chunk_text})
 
                 # 2. Add chunk node to the graph
                 self.graph.add_node(current_chunk_id, type="chunk", 
                                     source_document_id=source_id, 
-                                    original_url=original_url, # Store original URL as well
+                                    original_url=original_url,
                                     text_preview=chunk_text[:150]+"...") 
 
                 # 3. Advanced entity extraction
                 extracted_entities = self._extract_entities_advanced(chunk_text, source_id_for_prompt=current_chunk_id)
-                
-                entity_nodes_in_chunk = {} # Store normalized entity_id within this chunk
+                entity_nodes_in_chunk = {}
 
                 for ent_data in extracted_entities:
                     ent_text = ent_data.get("text")
@@ -301,22 +293,19 @@ class AdvancedKAGBuilder:
 
                     if not self.graph.has_node(normalized_ent_id):
                         self.graph.add_node(normalized_ent_id, type="entity", entity_type=ent_type,
-                                            # Store original forms if needed
                                             original_text_forms=set([ent_text])) 
                     else:
-                        # Update list of original forms if it already exists
                         if 'original_text_forms' in self.graph.nodes[normalized_ent_id]:
                             self.graph.nodes[normalized_ent_id]['original_text_forms'].add(ent_text)
                         else:
                              self.graph.nodes[normalized_ent_id]['original_text_forms'] = set([ent_text])
-                        # Update entity_type if the new type is more specific (more complex logic might be needed)
                         if ent_type != "UNKNOWN_ENTITY_TYPE" and self.graph.nodes[normalized_ent_id].get('entity_type') == "UNKNOWN_ENTITY_TYPE":
                             self.graph.nodes[normalized_ent_id]['entity_type'] = ent_type
                         
                     # Add edge from chunk to entity (e.g., "mentions_entity")
                     self.graph.add_edge(current_chunk_id, normalized_ent_id, type="mentions_entity",
                                         entity_text_in_chunk=ent_text,
-                                        start_char=ent_data.get("start_char"), # Store position if needed
+                                        start_char=ent_data.get("start_char"),
                                         end_char=ent_data.get("end_char")
                                         )
                     entity_nodes_in_chunk[ent_text] = normalized_ent_id
@@ -326,11 +315,9 @@ class AdvancedKAGBuilder:
                 # print(f"Extracting relations from: {current_chunk_id}")
                 extracted_relations = self._extract_relations(chunk_text, extracted_entities, source_id_for_prompt=current_chunk_id)
                 for subj_text, rel_type, obj_text in extracted_relations:
-                    # Find normalized entity node
                     subj_node_id = self._find_entity_node(subj_text, entity_nodes_in_chunk)
                     obj_node_id = self._find_entity_node(obj_text, entity_nodes_in_chunk)
                     
-                    # If not found, create a new node
                     if not subj_node_id:
                         subj_node_id = self._normalize_entity_text(subj_text)
                         if not self.graph.has_node(subj_node_id): 
@@ -344,33 +331,22 @@ class AdvancedKAGBuilder:
                                              original_text_forms=set([obj_text]))
 
                     if subj_node_id and obj_node_id and subj_node_id != obj_node_id:
-                         # Add relationship edge between entity nodes
                         self.graph.add_edge(subj_node_id, obj_node_id, type="kg_relation", 
                                             relation_label=rel_type, 
-                                            source_chunk_id=current_chunk_id) # Link back to the chunk containing the evidence
+                                            source_chunk_id=current_chunk_id)
                     else:
                         print(f"Warning: Could not map entities for relation: [{subj_text}, {rel_type}, {obj_text}] in {current_chunk_id}")
 
-
                 chunk_id_counter += 1
-                # if chunk_id_counter % 5 == 0: # Log more frequently for development
-                #     print(f"KAG BUILDER: Processed {chunk_id_counter} chunks...")
                 pbar.update(1)
                 
-            #update vector index and save artifacts after each document
             self.build_vector_index_and_save_artifacts(all_chunks_for_embedding)
-        
-        
+
     def build_vector_index_and_save_artifacts(self, all_chunks_for_embedding):
-        # ... (phần code xây dựng FAISS index giữ nguyên từ file của bạn) ...
-        # --- Xây dựng Vector Index ---
         if not all_chunks_for_embedding:
             print("KAG BUILDER: No chunks to build vector index from.")
-            # Quyết định xem có nên dừng ở đây hay vẫn lưu KG rỗng
-            # Hiện tại, giả sử vẫn muốn lưu KG dù không có chunk nào cho vector index
-            # Nếu bạn muốn dừng hẳn, thêm return ở đây
 
-        if all_chunks_for_embedding: # Chỉ chạy nếu có chunk để tạo embedding
+        if all_chunks_for_embedding:
             chunk_texts_for_embedding = [chunk['text'] for chunk in all_chunks_for_embedding]
             chunk_ids_for_index = [chunk['id'] for chunk in all_chunks_for_embedding]
 
@@ -388,48 +364,33 @@ class AdvancedKAGBuilder:
             print(f"KAG BUILDER: FAISS index built with {self.faiss_index_map.ntotal} vectors.")
             faiss.write_index(self.faiss_index_map, settings.FAISS_INDEX_PATH)
         else:
-            # Xử lý trường hợp không có chunk nào cho vector index
-            # Có thể tạo một FAISS index rỗng hoặc không làm gì cả tùy theo logic của bạn
-            # Hiện tại, nếu không có chunk, sẽ không có file FAISS index được tạo/ghi đè
             print("KAG BUILDER: No chunks provided for FAISS index, skipping FAISS index creation.")
 
-        # --- Chuẩn bị và Lưu Đồ thị KG ---
         print("KAG BUILDER: Post-processing graph for GML compatibility...")
         processed_graph = self._post_process_graph_for_gml(self.graph)
-        # processed_graph = self.graph
         
         print("KAG BUILDER: Saving Knowledge Graph to GML file...")
-        nx.write_gml(processed_graph, settings.GRAPH_PATH) # Sử dụng config và đồ thị đã xử lý
+        nx.write_gml(processed_graph, settings.GRAPH_PATH)
         
-        # Đảm bảo self.faiss_id_to_chunk_id được khởi tạo nếu không có embedding
         if not hasattr(self, 'faiss_id_to_chunk_id'):
             self.faiss_id_to_chunk_id = {}
 
-        # --- Lưu Doc Store và FAISS ID Map ---
         print("KAG BUILDER: Saving DocStore and FAISS ID Map...")
-        with open(settings.DOC_STORE_PATH, 'w', encoding='utf-8') as f: # Sử dụng config
+        with open(settings.DOC_STORE_PATH, 'w', encoding='utf-8') as f:
             json.dump({"doc_store": self.doc_store, 
                        "faiss_id_map": self.faiss_id_to_chunk_id}, 
                       f, ensure_ascii=False, indent=4)
         print("KAG BUILDER: All artifacts (KG, DocStore) saved. FAISS index saved if chunks were provided.")
 
     def _post_process_graph_for_gml(self, graph_input):
-        """
-        Chuẩn hóa các thuộc tính của node và cạnh trong đồ thị để tương thích với định dạng GML.
-        - Chuyển đổi 'original_text_forms' (set) thành chuỗi nối bằng '|'.
-        - Chuyển đổi các thuộc tính là list, dict, set khác thành chuỗi JSON.
-        - Chuyển đổi các thuộc tính có kiểu không chuẩn khác thành chuỗi.
-        Trả về một bản sao của đồ thị đã được xử lý.
-        """
-        graph_to_save = graph_input.copy() # Làm việc trên bản sao
+        graph_to_save = graph_input.copy()
 
-        # Xử lý thuộc tính của Nodes
         for node_id, attrs in graph_to_save.nodes(data=True):
             if 'original_text_forms' in attrs and isinstance(attrs['original_text_forms'], set):
                 attrs['original_text_forms'] = "|".join(sorted(list(attrs['original_text_forms'])))
             
-            for key, value in list(attrs.items()): # Duyệt qua bản sao của các items để có thể sửa dict
-                if key == 'original_text_forms' and isinstance(value, str): # Bỏ qua nếu đã xử lý ở trên
+            for key, value in list(attrs.items()):
+                if key == 'original_text_forms' and isinstance(value, str):
                     continue
                 if isinstance(value, list) or isinstance(value, dict) or isinstance(value, set):
                     try:
@@ -441,9 +402,8 @@ class AdvancedKAGBuilder:
                      print(f"Warning: Attribute '{key}' for node '{node_id}' has non-standard GML type {type(value)}. Converting to string.")
                      attrs[key] = str(value)
 
-        # Xử lý thuộc tính của Edges
         for u, v, attrs in graph_to_save.edges(data=True):
-            for key, value in list(attrs.items()): # Duyệt qua bản sao của các items
+            for key, value in list(attrs.items()):
                 if isinstance(value, list) or isinstance(value, dict) or isinstance(value, set):
                     try:
                         attrs[key] = json.dumps(value, ensure_ascii=False)
@@ -457,61 +417,32 @@ class AdvancedKAGBuilder:
         return graph_to_save
 
     def _normalize_entity_text(self, text):
-        """
-        Normalize entity text to be used as a node ID.
-        """
-        # Step 1: Convert to lowercase and strip whitespace
         normalized = text.lower().strip()
-        
-        # Step 2: Remove unnecessary punctuation from start and end
         normalized = re.sub(r'^[\s\.,;:\'\"!?\(\)\[\]\{\}]+|[\s\.,;:\'\"!?\(\)\[\]\{\}]+$', '', normalized)
-        
-        # Step 3: Replace multiple consecutive spaces with a single space
         normalized = re.sub(r'\s+', ' ', normalized)
-        
-        # Step 4: Remove function words if needed (can be skipped if meaning should be preserved)
-        # stop_words = {"and", "or", "of", "is", "the", "a", "an"} # Example English stop words
-        # words = normalized.split()
-        # normalized = ' '.join([w for w in words if w.lower() not in stop_words])
-        
         return normalized
 
     def _find_entity_node(self, entity_text, entity_nodes_in_chunk):
-        """
-        Find node ID for an entity based on its text.
-        First, search in the current chunk's entity list.
-        If not found, try normalizing and searching the entire graph.
-        """
-        # Exact search in the chunk's entity list
         if entity_text in entity_nodes_in_chunk:
             return entity_nodes_in_chunk[entity_text]
         
-        # If not found, try normalizing and comparing
         normalized_text = self._normalize_entity_text(entity_text)
         
-        # Search the entire graph for a matching entity node
         for node_id, attrs in self.graph.nodes(data=True):
             if attrs.get('type') == 'entity':
-                # Check original text forms
                 original_forms = attrs.get('original_text_forms', set())
                 if any(self._normalize_entity_text(form) == normalized_text for form in original_forms):
                     return node_id
                 
-                # Check normalized node_id
-                if self._normalize_entity_text(node_id) == normalized_text: # Assuming node_id itself might be a non-normalized form
+                if self._normalize_entity_text(node_id) == normalized_text:
                     return node_id
         
-        # If not found, return None
         return None
 
 if __name__ == "__main__":
-    # This script should be run after "all_processed_texts.json" has been generated.
-    # Requires working llm_utils.py and config.py.
-    
     processed_data_path = os.path.join(settings.PROCESSED_DATA_DIR, "all_processed_texts.json")
     if not os.path.exists(processed_data_path):
         print(f"Processed data file not found: {processed_data_path}. Please run the data processing script first.")
-        # Create dummy file to test builder
         dummy_processed_data = [
             {"source_id": "dummy_course_ai", "text_content": "Introduction to Artificial Intelligence. John McCarthy coined the term AI. AI is a field of computer science. Machine Learning is a subfield of AI."},
             {"source_id": "dummy_course_python", "text_content": "Advanced Python programming. Python can be used for web development and data analysis. Guido van Rossum created Python."}

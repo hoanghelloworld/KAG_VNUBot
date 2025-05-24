@@ -226,7 +226,6 @@ Thought:
         """
         results = []
         if obj != "?" and rel != "?" and self.graph.has_node(obj):
-            # Tìm tất cả các node có edge với obj với relation label phù hợp
             for node_id in self.graph.neighbors(obj):
                 if self.graph.has_edge(node_id, obj):
                     edge_data = self.graph.get_edge_data(node_id, obj)
@@ -621,11 +620,11 @@ Bạn đã trải qua một quá trình lý luận để trả lời câu hỏi 
 
 Dựa trên tất cả thông tin đã thu thập được trong scratchpad của bạn:
 1. Cung cấp một câu trả lời cuối cùng toàn diện, có cấu trúc tốt cho Câu hỏi gốc.
-2. Chỉ bao gồm thông tin được hỗ trợ trực tiếp bởi bằng chứng trong scratchpad.
-3. Hãy cụ thể và trích dẫn các nguồn thông tin nếu có thể (chunks, tên tài liệu).
+2. Ưu tiên sử dụng thông tin được hỗ trợ trực tiếp bởi bằng chứng trong scratchpad. Nếu thông tin trong scratchpad không đủ để trả lời hoàn chỉnh, bạn có thể bổ sung thông tin dựa trên kiến thức tổng quát của mình về ĐHQGHN và hệ thống giáo dục Việt Nam.
+3. Hãy cụ thể và trích dẫn các nguồn thông tin nếu có thể (chunks, tên tài liệu). Đối với thông tin từ kiến thức tổng quát, hãy ghi rõ "dựa trên kiến thức tổng quát".
 4. Nếu có nhiều khía cạnh cho câu trả lời, hãy sắp xếp chúng thành các phần rõ ràng.
 5. Nếu bạn gặp thông tin mâu thuẫn, hãy giải thích sự khác biệt.
-6. Nếu bạn không thể trả lời các phần của câu hỏi, hãy nêu rõ thông tin nào còn thiếu.
+6. Nếu bạn không thể trả lời các phần của câu hỏi ngay cả với kiến thức tổng quát, hãy nêu rõ thông tin nào còn thiếu và cần được tìm hiểu thêm.
 7. Trả lời bằng ngôn ngữ của Câu hỏi gốc (Tiếng Việt hoặc Tiếng Anh).
 
 Câu trả lời cuối cùng (ngắn gọn nhưng đầy đủ):

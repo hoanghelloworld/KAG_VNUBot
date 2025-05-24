@@ -4,7 +4,7 @@ from config import settings
 import time
 
 last_api_call_time = 0
-MIN_API_CALL_INTERVAL = 15
+MIN_API_CALL_INTERVAL = 5
 
 
 client = Together(api_key=settings.TOGETHER_API_KEY)

@@ -40,6 +40,7 @@ Bạn có quyền truy cập vào các công cụ sau:
    Các giá trị `query_type` có sẵn:
    - `find_relation`: Cho chủ thể (subject) và đối tượng (object), tìm mối quan hệ của chúng. (ví dụ: query_kg("Học phần A", "?", "Chương trình B", query_type="find_relation"))
    - `find_object`: Cho chủ thể (subject) và mối quan hệ (relation), tìm (các) đối tượng. (ví dụ: query_kg("John McCarthy", "tạo ra", "?", query_type="find_object"))
+   - `find_subject`: Cho mối quan hệ (relation) và đối tượng (object), tìm (các) chủ thể. (ví dụ: query_kg("?", "đặt tại", "Hà Nội", query_type="find_subject"))
    - `get_entity_details`: Cho một thực thể, lấy các thuộc tính và mối quan hệ trực tiếp của nó. (ví dụ: query_kg("Học phí", "?", "?", query_type="get_entity_details"))
    - `find_mentioning_chunks`: Cho một thực thể, tìm các đoạn văn bản đề cập đến nó. (ví dụ: query_kg("AI", "mentioned_in_chunk", "?", query_type="find_mentioning_chunks"))
    - `find_entity_by_type`: Cho một loại thực thể, liệt kê các thực thể thuộc loại đó. (ví dụ: query_kg("COURSE", "entity_type", "?", query_type="find_entity_by_type")
@@ -88,6 +89,22 @@ Quy trình Lý luận:
 Định dạng phản hồi của bạn MỘT CÁCH NGHIÊM NGẶT như sau:
 Thought: [Quá trình suy nghĩ của bạn]
 Action: [Gọi một trong các công cụ, ví dụ: `search_vector_db("quy định học phí")` hoặc `finish("Theo quy định...")`]
+
+QUAN TRỌNG: 
+- Chỉ được tạo MỘT Action duy nhất trong mỗi bước lý luận.
+- Sau khi tạo Action, DỪNG NGAY LẬP TỨC. Không được tiếp tục suy nghĩ hoặc tạo thêm Action nào khác.
+- Đợi kết quả từ Action hiện tại trước khi lập kế hoạch cho bước tiếp theo.
+- Không được viết nhiều cặp Thought-Action liên tiếp trong một lần phản hồi.
+
+VÍ DỤ ĐÚNG:
+Thought: Tôi cần tìm hiểu về học phí tại ĐHQGHN.
+Action: search_vector_db("quy định học phí đại học quốc gia hà nội")
+
+VÍ DỤ SAI (KHÔNG ĐƯỢC LÀM):
+Thought: Tôi cần tìm hiểu về học phí.
+Action: search_vector_db("quy định học phí")
+Thought: Nếu không tìm được thì tôi sẽ...
+Action: query_kg("học phí", "?", "?", query_type="get_entity_details")
 
 Câu hỏi gốc: {original_query}
 
@@ -198,6 +215,23 @@ Thought:
                 edge_data = edges_to_neighbor
                 if edge_data.get('type') == 'kg_relation' and edge_data.get('relation_label', '').lower() == rel:
                         results.append(f"Found object: '{neighbor_id}' related to '{subj}' via '{rel}' from chunk '{edge_data.get('source_chunk_id','N/A')}'")
+        return results
+    
+    def _query_find_subject(self, subj, rel, obj):
+        """
+        Find subject that has relation with obj
+        
+        Return:
+        ["Found subject: 'sinh viên' related to 'học phí' via 'phải_đóng' from chunk 'chunk_example'"]
+        """
+        results = []
+        if obj != "?" and rel != "?" and self.graph.has_node(obj):
+            # Tìm tất cả các node có edge với obj với relation label phù hợp
+            for node_id in self.graph.neighbors(obj):
+                if self.graph.has_edge(node_id, obj):
+                    edge_data = self.graph.get_edge_data(node_id, obj)
+                    if edge_data.get('type') == 'kg_relation' and edge_data.get('relation_label', '').lower() == rel.lower():
+                        results.append(f"Found subject: '{node_id}' related to '{obj}' via '{rel}' from chunk '{edge_data.get('source_chunk_id','N/A')}'")
         return results
     
     def _query_find_entity_by_type(self, subj, rel, obj):
@@ -330,8 +364,8 @@ Thought:
         subj = subject_str.lower().strip() if subject_str else "?"
         rel = relation_str.lower().strip() if relation_str else "?"
         obj = object_str.lower().strip() if object_str else "?"
-        q_type = query_type_str.lower().strip()
-
+        q_type = query_type_str.lower().strip() 
+        
         results = []
         
         if q_type == "find_mentioning_chunks":
@@ -345,6 +379,10 @@ Thought:
         elif q_type == "find_object":
             tmp_res = self._query_find_object(subj, rel, obj) 
             results.extend(tmp_res) 
+
+        elif q_type == "find_subject":
+            tmp_res = self._query_find_subject(subj, rel, obj)
+            results.extend(tmp_res)
 
         elif q_type == "get_entity_details":
             tmp_res = self._query_entity_details(subj, rel, obj) 
@@ -530,7 +568,7 @@ Thought:
             }
             current_prompt = self.reason_act_prompt_template_str.format(**prompt_input)
             
-            llm_full_output = llm_utils.get_llm_response(current_prompt, max_new_tokens=4500, system_message="You are a reasoning agent following instructions precisely.")
+            llm_full_output = llm_utils.get_llm_response(current_prompt, max_new_tokens=4500, system_message="You are a reasoning agent. Generate ONLY ONE Thought and ONE Action per response. Stop immediately after generating the Action. Do not continue thinking or planning ahead.")
             print(f"LLM Full Output (Thought & Action):\n{llm_full_output}")
 
             thought, action_type, action_input = self._parse_llm_action_output(llm_full_output)
@@ -612,8 +650,10 @@ if __name__ == "__main__":
         # answer1 = solver.solve(query1)
         # print(f"\n--- FINAL ANSWER (Query 1) ---\n{answer1}")
 
-        # query2 = "Các trường đại học trực thuộc Đại học quốc gia hà Nội năm 2025"
-        query2 = "Số yêu cầu để trở thành tiến sĩ tại Đại học quốc gia Hà Nội"
+        query2 = "Các trường đại học trực thuộc Đại học quốc gia hà Nội năm 2025"
+        # query2 = "Số yêu cầu để trở thành tiến sĩ tại Đại học quốc gia Hà Nội"
+        # query2 = "Ngày thành lập đại học công nghệ"
+        # query2 = "Năm 2022, DHQGHN có bao nhiêu nhân viên và giảng viên?"
         
         print(f"\nSolving Query 2: {query2}")
         scratchpad, answer2 = solver.solve(query2)

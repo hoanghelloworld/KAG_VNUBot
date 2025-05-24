@@ -1,4 +1,3 @@
-
 <!-- filepath: /workspaces/KAG_VNUBot/README.md -->
 # KAG_VNUBot: Chatbot Tra Cứu Thông Tin Quy Chế Đại Học Quốc Gia Hà Nội
 
@@ -69,10 +68,9 @@ Mục tiêu chính là cung cấp một công cụ tra cứu thông tin nhanh ch
     cd KAG_VNUBot
     ```
 
-2.  **Tạo môi trường ảo (khuyến nghị):**
+2.  **Tạo môi trường conda:**
     ```bash
-    python -m venv venv
-    source venv/bin/activate  # Trên Windows: venv\\Scripts\\activate
+    conda activate kag_vnubot python 
     ```
 
 3.  **Cài đặt các thư viện cần thiết:**
@@ -90,27 +88,42 @@ Mục tiêu chính là cung cấp một công cụ tra cứu thông tin nhanh ch
         ```
     *   Tham khảo file `config.py` để biết các biến môi trường có thể cấu hình.
 
-5.  **Tải các mô hình LLM và Embedding (nếu chạy local):**
-    Các mô hình sẽ tự động được tải về khi chạy lần đầu, nhưng quá trình này có thể mất thời gian. Đảm bảo bạn có kết nối internet ổn định.
+5.  **Chuẩn bị dữ liệu và xây dựng Knowledge Graph:**
+    *   **Cấu trúc dữ liệu**: 
+        * Dữ liệu cần được chuẩn bị trong định dạng JSON và lưu tại `data_processed/all_processed_texts.json`
+        * Cấu trúc file JSON phải là một mảng các đoạn văn bản đã được xử lý
+        * Bạn có thể thu thập dữ liệu từ nhiều nguồn khác nhau (website VNU, văn bản PDF) nhưng cần đảm bảo định dạng cuối cùng phải giống như `all_processed_texts.json`
 
-6.  **Chuẩn bị dữ liệu và xây dựng Knowledge Graph:**
-    *   **Thu thập dữ liệu**: Chạy notebook `data_crawler_and_preprocessed.ipynb` để thu thập dữ liệu từ các nguồn (ví dụ: website VNU, văn bản PDF) và tiền xử lý chúng thành định dạng text.
-        *   Cell đầu tiên của notebook hướng dẫn cài đặt Playwright.
-        *   Các cell tiếp theo thực hiện việc crawl dữ liệu web và chuyển đổi PDF sang text (sử dụng Gemini API nếu có).
-    *   **Xử lý dữ liệu thô**: Chạy script `data_processed.py` để chuẩn hóa và cấu trúc lại dữ liệu text đã thu thập, lưu dưới dạng file JSON.
-        ```bash
-        python data_processed.py
-        ```
-    *   **Xây dựng Knowledge Graph và Vector Index**: Chạy script `advanced_kag_builder.py` để:
-        *   Phân đoạn (chunking) văn bản.
-        *   Trích xuất thực thể và quan hệ bằng LLM.
-        *   Xây dựng đồ thị tri thức (Knowledge Graph) và lưu dưới dạng file GML.
-        *   Tạo vector embeddings cho các chunk văn bản và xây dựng FAISS index.
-        *   Lưu trữ docstore (mapping chunk_id với nội dung chunk).
-        ```bash
-        python advanced_kag_builder.py
-        ```
-        Quá trình này sẽ tạo ra các artifacts trong thư mục `artifacts/` (ví dụ: `my_faiss_index.index`, `my_knowledge_graph.gml`, `doc_store.json`).
+    *   **Thu thập và xử lý dữ liệu**: Có 2 cách:
+        1. Sử dụng notebook `data_crawler_and_preprocessed.ipynb`:
+           * Notebook này sẽ hướng dẫn cài đặt Playwright để crawl dữ liệu
+           * Thực hiện crawl từ web và chuyển đổi PDF (có thể dùng Gemini API)
+           * Cuối cùng lưu kết quả vào `data_processed/all_processed_texts.json`
+        
+        2. Tự chuẩn bị dữ liệu:
+           * Tạo file `data_processed/all_processed_texts.json`
+           * Đảm bảo nội dung file là một mảng JSON chứa các đoạn văn bản đã được xử lý
+
+    *   **Xây dựng Knowledge Graph**: 
+        1. Kiểm tra file `config.py`:
+           * Nếu muốn xây dựng lại Knowledge Graph từ đầu: đặt `CONTINUE_BUILDING_KAG = False`
+           * Nếu muốn tiếp tục xây dựng từ KG hiện có: đặt `CONTINUE_BUILDING_KAG = True`
+        
+        2. Chạy script xây dựng KG:
+           ```bash
+           python advanced_kag_builder.py
+           ```
+           Script này sẽ:
+           * Phân đoạn văn bản thành chunks
+           * Trích xuất thực thể và quan hệ bằng LLM
+           * Xây dựng Knowledge Graph và lưu dưới dạng GML
+           * Tạo vector embeddings và FAISS index
+           * Lưu trữ docstore
+
+        3. Kết quả sẽ được lưu trong thư mục `artifacts/`:
+           * `my_faiss_index.index`: FAISS index cho vector search
+           * `my_knowledge_graph.gml`: Knowledge Graph dạng GML
+           * `doc_store.json`: Mapping giữa chunk_id và nội dung
 
 ## Sử dụng
 
